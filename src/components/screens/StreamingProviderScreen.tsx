@@ -227,6 +227,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
               <button
                 onClick={() => navigate('/nominations')}
                 className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                aria-label="Back to nominations"
               >
                 <ArrowLeft className="h-5 w-5 text-white" />
               </button>
