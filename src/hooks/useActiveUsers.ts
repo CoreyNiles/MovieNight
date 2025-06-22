@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, query, where, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, query, where, Timestamp, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { User } from '../types';
+import { CONSTANTS } from '../constants';
 
 interface ActiveUser {
   id: string;
@@ -16,12 +16,12 @@ export const useActiveUsers = () => {
 
   useEffect(() => {
     // Listen to users who have been active in the last 5 minutes
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const thresholdTime = new Date(Date.now() - CONSTANTS.ACTIVE_USER_THRESHOLD_MINUTES * 60 * 1000);
     
     const activeUsersRef = collection(db, 'activeUsers');
     const activeUsersQuery = query(
       activeUsersRef,
-      where('lastSeen', '>=', Timestamp.fromDate(fiveMinutesAgo))
+      where('lastSeen', '>=', Timestamp.fromDate(thresholdTime))
     );
 
     const unsubscribe = onSnapshot(activeUsersQuery, (snapshot) => {
@@ -45,9 +45,7 @@ export const useActiveUsers = () => {
   const updateLastSeen = async (userId: string) => {
     try {
       // Get user data first
-      const userDoc = await import('firebase/firestore').then(({ getDoc, doc }) => 
-        getDoc(doc(db, 'users', userId))
-      );
+      const userDoc = await getDoc(doc(db, 'users', userId));
       
       if (userDoc.exists()) {
         await setDoc(doc(db, 'activeUsers', userId), {

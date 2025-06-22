@@ -2,15 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Plus, X, Film, Clock, Calendar, Check, AlertCircle, Star, MapPin, Tv } from 'lucide-react';
 import { useMovieLibrary } from '../../hooks/useMovieLibrary';
+import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { useAuth } from '../../hooks/useAuth';
 import { NavigationHeader } from '../common/NavigationHeader';
 import { StatusOverview } from '../common/StatusOverview';
+import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
 export const NominationScreen: React.FC = () => {
   const { user } = useAuth();
   const { movies, searchResults, searching, searchError, searchMoviesAPI, addMovieToLibrary, clearSearchResults } = useMovieLibrary(user?.id || '');
+  const { shareMovie } = useSharedMovies();
   const { dailyCycle, submitNominations } = useDailyCycle();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,10 +41,10 @@ export const NominationScreen: React.FC = () => {
     setSelectedMovies(prev => {
       if (prev.includes(movieId)) {
         return prev.filter(id => id !== movieId);
-      } else if (prev.length < 3) {
+      } else if (prev.length < CONSTANTS.MAX_NOMINATIONS_PER_USER) {
         return [...prev, movieId];
       } else {
-        toast.error('You can only select up to 3 movies');
+        toast.error(`You can only select up to ${CONSTANTS.MAX_NOMINATIONS_PER_USER} movies`);
         return prev;
       }
     });
@@ -62,6 +65,16 @@ export const NominationScreen: React.FC = () => {
   const handleSubmitNominations = async () => {
     try {
       setLoading(true);
+      
+      // First, share all selected movies to the shared pool
+      for (const movieId of selectedMovies) {
+        const movie = movies.find(m => m.id === movieId);
+        if (movie) {
+          await shareMovie(movie, user!.id);
+        }
+      }
+      
+      // Then submit nominations
       await submitNominations(user!.id, selectedMovies);
       toast.success('Nominations submitted!');
     } catch (error) {
@@ -110,7 +123,7 @@ export const NominationScreen: React.FC = () => {
               <Film className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-4xl font-bold text-white mb-2">Choose Your Nominations</h1>
-            <p className="text-white/80">Select up to 3 movies from your library for tonight's vote</p>
+            <p className="text-white/80">Select up to {CONSTANTS.MAX_NOMINATIONS_PER_USER} movies from your library for tonight's vote</p>
             <div className="flex items-center justify-center space-x-2 mt-2">
               <MapPin className="h-4 w-4 text-green-400" />
               <span className="text-green-400 text-sm">Showing movies available in Canada</span>
@@ -124,6 +137,7 @@ export const NominationScreen: React.FC = () => {
                   <button
                     onClick={() => setShowSearch(!showSearch)}
                     className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                    aria-label="Search for movies"
                   >
                     <Search className="h-4 w-4" />
                     <span>Search Movies</span>
@@ -138,7 +152,7 @@ export const NominationScreen: React.FC = () => {
                 </div>
                 
                 <div className="text-white/70">
-                  {selectedMovies.length}/3 selected
+                  {selectedMovies.length}/{CONSTANTS.MAX_NOMINATIONS_PER_USER} selected
                 </div>
               </div>
 
@@ -155,6 +169,7 @@ export const NominationScreen: React.FC = () => {
                       <button
                         onClick={handleCloseSearch}
                         className="text-white/70 hover:text-white transition-colors"
+                        aria-label="Close search panel"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -183,7 +198,7 @@ export const NominationScreen: React.FC = () => {
                     {searching && (
                       <div className="text-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-                        <p className="text-white/70">Searching movies...</p>
+                        <p className="text-white/70">Searching for "{searchQuery}"...</p>
                       </div>
                     )}
 
@@ -198,11 +213,11 @@ export const NominationScreen: React.FC = () => {
                           >
                             <div className="flex space-x-3">
                               <img
-                                src={movie.poster || 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400'}
+                                src={movie.poster || CONSTANTS.FALLBACK_POSTER_URL}
                                 alt={movie.title}
                                 className="w-16 h-24 object-cover rounded flex-shrink-0"
                                 onError={(e) => {
-                                  (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400';
+                                  (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
                                 }}
                               />
                               <div className="flex-1 min-w-0">
@@ -284,7 +299,7 @@ export const NominationScreen: React.FC = () => {
                         alt={movie.title}
                         className="w-full h-80 object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400';
+                          (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
                         }}
                       />
                       <div className="p-4">
@@ -391,7 +406,7 @@ export const NominationScreen: React.FC = () => {
                           alt={movie.title}
                           className="w-full h-32 object-cover rounded mb-2"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400';
+                            (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
                           }}
                         />
                         <h4 className="text-white text-sm font-medium">{movie.title}</h4>

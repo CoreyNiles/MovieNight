@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc, updateDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc, getDoc, deleteDoc, runTransaction } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { db } from '../config/firebase';
-import { DailyCycle } from '../types';
+import { DailyCycle, DailyState } from '../types';
+import { CONSTANTS, VOTE_POINTS } from '../constants';
 
 const getCurrentCycleId = () => {
   const now = new Date();
@@ -23,59 +24,34 @@ export const useDailyCycle = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const cycleId = getCurrentCycleId();
-    const cycleRef = doc(db, 'dailyCycles', cycleId);
+  // Centralized winner calculation function
+  const calculateWinner = (cycle: DailyCycle): any => {
+    const scores: Record<string, number> = {};
+    const allNominations = Object.values(cycle.nominations).flat();
+    const uniqueMovieIds = [...new Set(allNominations)];
 
-    const unsubscribe = onSnapshot(cycleRef, async (docSnap) => {
-      try {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const cycle: DailyCycle = {
-            id: cycleId,
-            current_status: data.current_status,
-            decisions: data.decisions || {},
-            nominations: data.nominations || {},
-            votes: data.votes || {},
-            winning_movie: data.winning_movie,
-            schedule_settings: data.schedule_settings || {
-              finish_by_time: '03:30'
-            },
-            created_at: data.created_at.toDate()
-          };
-
-          // Check for auto-advancement after setting the cycle
-          setDailyCycle(cycle);
-          
-          // Auto-advance logic with proper timing
-          setTimeout(() => {
-            checkAndAdvanceStatus(cycle, cycleRef);
-          }, 100);
-        } else {
-          // Create new daily cycle
-          const newCycle: Omit<DailyCycle, 'id'> = {
-            current_status: 'WAITING_FOR_DECISIONS',
-            decisions: {},
-            nominations: {},
-            votes: {},
-            schedule_settings: {
-              finish_by_time: '03:30'
-            },
-            created_at: new Date()
-          };
-          
-          await setDoc(cycleRef, newCycle);
-        }
-        setLoading(false);
-      } catch (err) {
-        console.error('Error in daily cycle listener:', err);
-        setError('Failed to load daily cycle');
-        setLoading(false);
-      }
+    // Initialize scores
+    uniqueMovieIds.forEach(movieId => {
+      scores[movieId] = 0;
     });
 
-    return unsubscribe;
-  }, []);
+    // Calculate votes (3 points for 1st, 2 for 2nd, 1 for 3rd)
+    Object.values(cycle.votes).forEach(vote => {
+      if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + VOTE_POINTS.FIRST_PLACE;
+      if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + VOTE_POINTS.SECOND_PLACE;
+      if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + VOTE_POINTS.THIRD_PLACE;
+    });
+
+    // Apply underdog boost (this would need access to shared movies for streak data)
+    // For now, we'll handle this in the component that has access to shared movies
+
+    // Find winner (highest score)
+    const sortedMovies = uniqueMovieIds
+      .map(id => ({ movie_id: id, score: scores[id] }))
+      .sort((a, b) => b.score - a.score);
+
+    return sortedMovies[0] || null;
+  };
 
   const checkAndAdvanceStatus = async (cycle: DailyCycle, cycleRef: any) => {
     const decisions = Object.entries(cycle.decisions);
@@ -94,16 +70,16 @@ export const useDailyCycle = () => {
     });
     
     switch (cycle.current_status) {
-      case 'WAITING_FOR_DECISIONS':
+      case DailyState.WAITING_FOR_DECISIONS:
         // Auto-advance if we have at least 2 yes decisions and all decisions are in
         // OR if we have 3 decisions total (regardless of yes/no split)
-        if ((yesDecisions.length >= 2 && decisions.length >= 3) || 
-            (decisions.length >= 3 && yesDecisions.length >= 1)) {
+        if ((yesDecisions.length >= CONSTANTS.MIN_YES_DECISIONS && decisions.length >= CONSTANTS.MIN_TOTAL_DECISIONS) || 
+            (decisions.length >= CONSTANTS.MIN_TOTAL_DECISIONS && yesDecisions.length >= 1)) {
           
-          if (yesDecisions.length >= 2) {
+          if (yesDecisions.length >= CONSTANTS.MIN_YES_DECISIONS) {
             console.log('Auto-advancing to nominations - enough yes votes');
             try {
-              await updateDoc(cycleRef, { current_status: 'GATHERING_NOMINATIONS' });
+              await updateDoc(cycleRef, { current_status: DailyState.GATHERING_NOMINATIONS });
             } catch (error) {
               console.error('Failed to auto-advance to nominations:', error);
             }
@@ -114,37 +90,37 @@ export const useDailyCycle = () => {
         }
         break;
         
-      case 'GATHERING_NOMINATIONS':
+      case DailyState.GATHERING_NOMINATIONS:
         // Auto-advance if all "yes" people have nominated
         if (yesDecisions.length > 0 && nominations.length >= yesDecisions.length) {
           console.log('Auto-advancing to voting - all nominations received');
           try {
-            await updateDoc(cycleRef, { current_status: 'GATHERING_VOTES' });
+            await updateDoc(cycleRef, { current_status: DailyState.GATHERING_VOTES });
           } catch (error) {
             console.error('Failed to auto-advance to voting:', error);
           }
         }
         break;
         
-      case 'GATHERING_VOTES':
+      case DailyState.GATHERING_VOTES:
         // Auto-advance if all "yes" people have voted
         if (yesDecisions.length > 0 && votes.length >= yesDecisions.length) {
           console.log('Auto-advancing to reveal - all votes received');
           const winner = calculateWinner(cycle);
           try {
             await updateDoc(cycleRef, { 
-              current_status: 'REVEAL',
+              current_status: DailyState.REVEAL,
               winning_movie: winner
             });
             
-            // Auto-advance to dashboard after 10 seconds
+            // Auto-advance to dashboard after delay
             setTimeout(async () => {
               try {
-                await updateDoc(cycleRef, { current_status: 'DASHBOARD_VIEW' });
+                await updateDoc(cycleRef, { current_status: DailyState.DASHBOARD_VIEW });
               } catch (error) {
                 console.error('Error auto-advancing to dashboard:', error);
               }
-            }, 10000);
+            }, CONSTANTS.REVEAL_TO_DASHBOARD_DELAY);
           } catch (error) {
             console.error('Failed to auto-advance to reveal:', error);
           }
@@ -153,32 +129,63 @@ export const useDailyCycle = () => {
     }
   };
 
-  const calculateWinner = (cycle: DailyCycle): any => {
-    const scores: Record<string, number> = {};
-    const allNominations = Object.values(cycle.nominations).flat();
-    const uniqueMovieIds = [...new Set(allNominations)];
+  useEffect(() => {
+    const cycleId = getCurrentCycleId();
+    const cycleRef = doc(db, 'dailyCycles', cycleId);
 
-    // Initialize scores
-    uniqueMovieIds.forEach(movieId => {
-      scores[movieId] = 0;
+    const unsubscribe = onSnapshot(cycleRef, async (docSnap) => {
+      try {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const cycle: DailyCycle = {
+            id: cycleId,
+            current_status: data.current_status,
+            decisions: data.decisions || {},
+            nominations: data.nominations || {},
+            votes: data.votes || {},
+            winning_movie: data.winning_movie,
+            schedule_settings: data.schedule_settings || {
+              finish_by_time: CONSTANTS.DEFAULT_FINISH_TIME
+            },
+            created_at: data.created_at.toDate()
+          };
+
+          setDailyCycle(cycle);
+          setLoading(false);
+        } else {
+          // Create new daily cycle
+          const newCycle: Omit<DailyCycle, 'id'> = {
+            current_status: DailyState.WAITING_FOR_DECISIONS,
+            decisions: {},
+            nominations: {},
+            votes: {},
+            schedule_settings: {
+              finish_by_time: CONSTANTS.DEFAULT_FINISH_TIME
+            },
+            created_at: new Date()
+          };
+          
+          await setDoc(cycleRef, newCycle);
+        }
+      } catch (err) {
+        console.error('Error in daily cycle listener:', err);
+        setError('Failed to load daily cycle');
+        setLoading(false);
+      }
     });
 
-    // Calculate votes (3 points for 1st, 2 for 2nd, 1 for 3rd)
-    Object.values(cycle.votes).forEach(vote => {
-      if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + 3;
-      if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + 2;
-      if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + 1;
-    });
+    return unsubscribe;
+  }, []);
 
-    // Find winner (highest score)
-    const sortedMovies = uniqueMovieIds
-      .map(id => ({ movie_id: id, score: scores[id] }))
-      .sort((a, b) => b.score - a.score);
+  // Use useEffect to handle auto-advancement when dailyCycle changes
+  useEffect(() => {
+    if (dailyCycle) {
+      const cycleRef = doc(db, 'dailyCycles', dailyCycle.id);
+      checkAndAdvanceStatus(dailyCycle, cycleRef);
+    }
+  }, [dailyCycle]);
 
-    return sortedMovies[0] || null;
-  };
-
-  const updateCycleStatus = async (status: DailyCycle['current_status']) => {
+  const updateCycleStatus = async (status: DailyState) => {
     try {
       const cycleId = getCurrentCycleId();
       await updateDoc(doc(db, 'dailyCycles', cycleId), {
@@ -195,22 +202,25 @@ export const useDailyCycle = () => {
       const cycleId = getCurrentCycleId();
       const cycleRef = doc(db, 'dailyCycles', cycleId);
       
-      // Delete the current cycle document
-      await deleteDoc(cycleRef);
-      
-      // Create a fresh cycle
-      const newCycle: Omit<DailyCycle, 'id'> = {
-        current_status: 'WAITING_FOR_DECISIONS',
-        decisions: {},
-        nominations: {},
-        votes: {},
-        schedule_settings: {
-          finish_by_time: '03:30'
-        },
-        created_at: new Date()
-      };
-      
-      await setDoc(cycleRef, newCycle);
+      // Use a transaction to ensure atomic reset
+      await runTransaction(db, async (transaction) => {
+        // Delete the current cycle document
+        transaction.delete(cycleRef);
+        
+        // Create a fresh cycle
+        const newCycle: Omit<DailyCycle, 'id'> = {
+          current_status: DailyState.WAITING_FOR_DECISIONS,
+          decisions: {},
+          nominations: {},
+          votes: {},
+          schedule_settings: {
+            finish_by_time: CONSTANTS.DEFAULT_FINISH_TIME
+          },
+          created_at: new Date()
+        };
+        
+        transaction.set(cycleRef, newCycle);
+      });
     } catch (err) {
       console.error('Error resetting daily cycle:', err);
       throw err;
@@ -261,6 +271,7 @@ export const useDailyCycle = () => {
     resetDailyCycle,
     makeDecision,
     submitNominations,
-    submitVote
+    submitVote,
+    calculateWinner
   };
 };

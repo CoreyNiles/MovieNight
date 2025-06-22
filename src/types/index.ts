@@ -19,7 +19,7 @@ export interface Movie {
   added_at: Date;
 }
 
-export interface DailyState {
+export enum DailyState {
   WAITING_FOR_DECISIONS = 'WAITING_FOR_DECISIONS',
   GATHERING_NOMINATIONS = 'GATHERING_NOMINATIONS',
   GATHERING_VOTES = 'GATHERING_VOTES',
@@ -29,7 +29,7 @@ export interface DailyState {
 
 export interface DailyCycle {
   id: string; // Date string (YYYY-MM-DD)
-  current_status: keyof DailyState;
+  current_status: DailyState;
   decisions: Record<string, boolean>; // userId -> yes/no decision
   nominations: Record<string, string[]>; // userId -> array of movie IDs
   votes: Record<string, {
@@ -39,8 +39,12 @@ export interface DailyCycle {
   }>;
   winning_movie?: {
     movie_id: string;
+    title: string;
+    poster_url: string;
+    runtime: number;
+    release_year: number;
     score: number;
-    start_time: string;
+    start_time?: string;
   };
   schedule_settings: {
     finish_by_time: string;

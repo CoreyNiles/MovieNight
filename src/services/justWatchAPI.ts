@@ -1,7 +1,9 @@
+import { CONSTANTS } from '../constants';
+
 // JustWatch API service for movie search and details with Canadian availability
 const JUSTWATCH_API_BASE = 'https://apis.justwatch.com/content';
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
-const TMDB_API_KEY = 'a07e22bc18f5cb106bfe4cc1f83ad8ed'; // Public TMDB API key
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 
 interface JustWatchMovie {
   id: number;
@@ -57,7 +59,7 @@ class JustWatchAPI {
       if (tmdbResponse.results && tmdbResponse.results.length > 0) {
         // Get detailed info for each movie including runtime
         const moviesWithDetails = await Promise.all(
-          tmdbResponse.results.slice(0, 10).map(async (movie: any) => {
+          tmdbResponse.results.slice(0, CONSTANTS.SEARCH_RESULTS_LIMIT).map(async (movie: any) => {
             try {
               // Get movie details including runtime
               const detailUrl = `${TMDB_API_BASE}/movie/${movie.id}?api_key=${TMDB_API_KEY}`;
@@ -84,7 +86,7 @@ class JustWatchAPI {
               return {
                 id: movie.id,
                 title: movie.title,
-                poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : undefined,
+                poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
                 runtime: details.runtime || undefined,
                 release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
                 genre_names: details.genres?.map((g: any) => g.name) || [],
@@ -98,7 +100,7 @@ class JustWatchAPI {
               return {
                 id: movie.id,
                 title: movie.title,
-                poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : undefined,
+                poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
                 runtime: undefined,
                 release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
                 genre_names: [],
@@ -155,7 +157,7 @@ class JustWatchAPI {
       return {
         id: details.id,
         title: details.title,
-        poster: details.poster_path ? `https://image.tmdb.org/t/p/w500${details.poster_path}` : undefined,
+        poster: details.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${details.poster_path}` : undefined,
         runtime: details.runtime,
         release_year: details.release_date ? new Date(details.release_date).getFullYear() : undefined,
         genre_names: details.genres?.map((g: any) => g.name) || [],

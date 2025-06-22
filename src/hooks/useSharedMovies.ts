@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, runTransaction } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Movie } from '../types';
 
@@ -35,24 +35,25 @@ export const useSharedMovies = () => {
     try {
       const sharedMovieRef = doc(db, 'sharedMovies', movie.id);
       
-      // Check if movie is already shared
-      const existingDoc = await getDoc(sharedMovieRef);
-      if (existingDoc.exists()) {
-        return; // Already shared
-      }
-
-      await setDoc(sharedMovieRef, {
-        title: movie.title,
-        justwatch_id: movie.justwatch_id,
-        poster_url: movie.poster_url,
-        runtime: movie.runtime,
-        release_year: movie.release_year,
-        genre_names: movie.genre_names || [],
-        short_description: movie.short_description || '',
-        nomination_streak: movie.nomination_streak,
-        added_at: movie.added_at,
-        original_owner: userId,
-        shared_at: new Date()
+      // Use a transaction to ensure atomic check-and-set
+      await runTransaction(db, async (transaction) => {
+        const existingDoc = await transaction.get(sharedMovieRef);
+        
+        if (!existingDoc.exists()) {
+          transaction.set(sharedMovieRef, {
+            title: movie.title,
+            justwatch_id: movie.justwatch_id,
+            poster_url: movie.poster_url,
+            runtime: movie.runtime,
+            release_year: movie.release_year,
+            genre_names: movie.genre_names || [],
+            short_description: movie.short_description || '',
+            nomination_streak: movie.nomination_streak,
+            added_at: movie.added_at,
+            original_owner: userId,
+            shared_at: new Date()
+          });
+        }
       });
     } catch (error) {
       console.error('Error sharing movie:', error);

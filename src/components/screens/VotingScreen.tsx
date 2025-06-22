@@ -2,17 +2,16 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Trophy, Clock, Calendar, Users, Check } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
-import { useMovieLibrary } from '../../hooks/useMovieLibrary';
 import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useAuth } from '../../hooks/useAuth';
 import { NavigationHeader } from '../common/NavigationHeader';
 import { StatusOverview } from '../common/StatusOverview';
+import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
 export const VotingScreen: React.FC = () => {
   const { user } = useAuth();
-  const { movies } = useMovieLibrary(user?.id || '');
-  const { sharedMovies, shareMovie } = useSharedMovies();
+  const { sharedMovies } = useSharedMovies();
   const { dailyCycle, submitVote } = useDailyCycle();
   
   const [votes, setVotes] = useState({
@@ -21,30 +20,6 @@ export const VotingScreen: React.FC = () => {
     third_pick: ''
   });
   const [loading, setLoading] = useState(false);
-
-  // Share nominated movies when component loads
-  useEffect(() => {
-    const shareNominatedMovies = async () => {
-      if (!dailyCycle || !user) return;
-
-      const allNominations = Object.values(dailyCycle.nominations).flat();
-      const uniqueMovieIds = [...new Set(allNominations)];
-
-      // Share each nominated movie from user's library
-      for (const movieId of uniqueMovieIds) {
-        const movie = movies.find(m => m.id === movieId);
-        if (movie) {
-          try {
-            await shareMovie(movie, user.id);
-          } catch (error) {
-            console.error('Error sharing movie:', error);
-          }
-        }
-      }
-    };
-
-    shareNominatedMovies();
-  }, [dailyCycle, movies, user, shareMovie]);
 
   const nominatedMovies = useMemo(() => {
     if (!dailyCycle) return [];
@@ -213,7 +188,7 @@ export const VotingScreen: React.FC = () => {
                       alt={movie.title}
                       className="w-16 h-24 object-cover rounded"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400';
+                        (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
                       }}
                     />
                     <div className="flex-1">
@@ -228,7 +203,7 @@ export const VotingScreen: React.FC = () => {
                           <span>{movie.runtime}m</span>
                         </div>
                       </div>
-                      {movie.nomination_streak >= 5 && (
+                      {movie.nomination_streak >= CONSTANTS.UNDERDOG_BOOST_THRESHOLD && (
                         <div className="mt-2 bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-xs inline-block">
                           🔥 Underdog Boost!
                         </div>

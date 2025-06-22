@@ -4,13 +4,13 @@ import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAEzP86t2HV71uL1TEy4PkiUSPQRHrCd68",
-  authDomain: "movienight-f8f60.firebaseapp.com",
-  projectId: "movienight-f8f60",
-  storageBucket: "movienight-f8f60.firebasestorage.app",
-  messagingSenderId: "1080550714257",
-  appId: "1:1080550714257:web:442892f34f865ff1234830",
-  measurementId: "G-B6L19411GY"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);
