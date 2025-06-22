@@ -35,7 +35,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [filters, setFilters] = useState<FilterOptions>({
     decade: undefined,
@@ -136,7 +136,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     if (!user || !dailyCycle) return;
     
     try {
-      setLoading(true);
+      setIsSubmitting(true);
       
       // Create temporary movie objects for sharing
       const allMovies = [
@@ -173,7 +173,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     } catch (error) {
       toast.error('Failed to submit nominations');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -181,13 +181,13 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     if (!user || !dailyCycle) return;
     
     try {
-      setLoading(true);
+      setIsSubmitting(true);
       await submitNominations(user.id, []);
       toast.success('Noted - no nominations from you tonight');
     } catch (error) {
       toast.error('Failed to submit');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -217,7 +217,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
             maxSelections={maxSelections}
             onSubmit={handleSubmitNominations}
             onNoNominations={handleNoNominations}
-            loading={loading}
+            loading={isSubmitting}
             hasSubmitted={hasSubmitted}
           />
 
