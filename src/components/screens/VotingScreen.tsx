@@ -96,17 +96,17 @@ export const VotingScreen: React.FC = () => {
               <h3 className="text-white font-semibold mb-3">Your Votes:</h3>
               <div className="space-y-3">
                 {[
-                  { key: 'top_pick', label: '1st Choice', points: 3 },
-                  { key: 'second_pick', label: '2nd Choice', points: 2 },
-                  { key: 'third_pick', label: '3rd Choice', points: 1 }
-                ].map(({ key, label, points }) => {
+                  { key: 'top_pick', label: '1st Choice', points: 3, position: 1 },
+                  { key: 'second_pick', label: '2nd Choice', points: 2, position: 2 },
+                  { key: 'third_pick', label: '3rd Choice', points: 1, position: 3 }
+                ].map(({ key, label, points, position }) => {
                   const movieId = dailyCycle.votes[user.id][key as keyof typeof votes];
                   const movie = sharedMovies.find(m => m.id === movieId);
                   return movieId ? (
                     <div key={key} className="flex items-center justify-between bg-white/5 p-3 rounded">
                       <div className="flex items-center space-x-3">
                         <div className="bg-yellow-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
-                          {points}
+                          {position}
                         </div>
                         <div className="flex items-center space-x-3">
                           {movie && (
@@ -123,7 +123,7 @@ export const VotingScreen: React.FC = () => {
                             <span className="text-white font-medium block">
                               {movie ? movie.title : `Movie ID: ${movieId.slice(0, 8)}...`}
                             </span>
-                            <span className="text-white/70 text-sm">{label}</span>
+                            <span className="text-white/70 text-sm">{label} ({points} points)</span>
                           </div>
                         </div>
                       </div>

@@ -89,7 +89,7 @@ export const NominationScreen: React.FC = () => {
       setSearchResults(response.items);
       
       if (response.items.length === 0) {
-        setSearchError('No movies found. Try a different search term.');
+        setSearchError('No movies found on major streaming services. Try a different search term.');
       }
     } catch (error) {
       console.error('Error searching movies:', error);
@@ -199,7 +199,7 @@ export const NominationScreen: React.FC = () => {
             <p className="text-white/80">Select up to {CONSTANTS.MAX_NOMINATIONS_PER_USER} movies for tonight's vote</p>
             <div className="flex items-center justify-center space-x-2 mt-2">
               <MapPin className="h-4 w-4 text-green-400" />
-              <span className="text-green-400 text-sm">Showing movies available in Canada</span>
+              <span className="text-green-400 text-sm">Showing movies available on major streaming services</span>
             </div>
           </motion.div>
 
@@ -232,7 +232,7 @@ export const NominationScreen: React.FC = () => {
                     className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20"
                   >
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-semibold text-white">Search Movies</h3>
+                      <h3 className="text-lg font-semibold text-white">Search Movies on Major Streaming Services</h3>
                       <button
                         onClick={handleCloseSearch}
                         className="text-white/70 hover:text-white transition-colors"
@@ -301,6 +301,11 @@ export const NominationScreen: React.FC = () => {
                                   <span>{movie.release_year}</span>
                                   {movie.runtime && <span>{movie.runtime}m</span>}
                                 </div>
+                                {movie.streaming_providers && movie.streaming_providers.length > 0 && (
+                                  <div className="mt-1 text-green-400 text-xs">
+                                    {movie.streaming_providers.slice(0, 1).join(', ')}
+                                  </div>
+                                )}
                               </div>
                               
                               {isSelected && (

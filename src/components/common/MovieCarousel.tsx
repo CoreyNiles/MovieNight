@@ -47,7 +47,7 @@ export const MovieCarousel: React.FC<MovieCarouselProps> = ({
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white mb-4">{title}</h2>
         <div className="bg-white/5 rounded-xl p-8 text-center">
-          <p className="text-white/70">No movies available</p>
+          <p className="text-white/70">No movies available on major streaming services</p>
         </div>
       </div>
     );
@@ -136,10 +136,10 @@ export const MovieCarousel: React.FC<MovieCarouselProps> = ({
                   </div>
                 )}
 
-                {movie.available_in_canada && (
+                {movie.isStreamable && (
                   <div className="flex items-center space-x-1 text-green-400 text-xs mb-2">
                     <MapPin className="h-3 w-3" />
-                    <span>Available in Canada</span>
+                    <span>Available to stream</span>
                   </div>
                 )}
 

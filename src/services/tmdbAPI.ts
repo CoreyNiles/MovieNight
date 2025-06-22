@@ -13,7 +13,7 @@ interface TMDBMovie {
   genre_names?: string[];
   short_description?: string;
   imdb_id?: string;
-  available_in_canada?: boolean;
+  isStreamable?: boolean; // Renamed from available_in_canada for clarity
   streaming_providers?: string[];
   vote_average?: number;
   release_date?: string;
@@ -33,6 +33,17 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
+  // Whitelist of approved major streaming providers
+  private readonly majorStreamers = [
+    'Netflix',
+    'Amazon Prime Video', 
+    'Apple TV Plus',
+    'Apple TV+', // Alternative naming
+    'Tubi TV',
+    'Tubi', // Alternative naming
+    'Mubi'
+  ];
+
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     try {
       const response = await fetch(url, {
@@ -69,11 +80,11 @@ class TMDBAPI {
           })
         );
 
-        // Filter out unreleased movies and movies without runtime
+        // Filter out movies that aren't streamable on major services
         const validMovies = moviesWithDetails.filter(movie => 
           movie.runtime && 
           movie.runtime > 0 && 
-          movie.available_in_canada === true
+          movie.isStreamable === true
         );
 
         return {
@@ -103,11 +114,11 @@ class TMDBAPI {
           })
         );
 
-        // Filter out unreleased movies and movies without runtime
+        // Filter out movies that aren't streamable on major services
         const validMovies = moviesWithDetails.filter(movie => 
           movie.runtime && 
           movie.runtime > 0 && 
-          movie.available_in_canada === true
+          movie.isStreamable === true
         );
 
         return {
@@ -159,11 +170,11 @@ class TMDBAPI {
           })
         );
 
-        // Filter out unreleased movies and movies without runtime
+        // Filter out movies that aren't streamable on major services
         const validMovies = moviesWithDetails.filter(movie => 
           movie.runtime && 
           movie.runtime > 0 && 
-          movie.available_in_canada === true
+          movie.isStreamable === true
         );
 
         return {
@@ -193,11 +204,11 @@ class TMDBAPI {
           })
         );
 
-        // Filter out unreleased movies and movies without runtime
+        // Filter out movies that aren't streamable on major services
         const validMovies = moviesWithDetails.filter(movie => 
           movie.runtime && 
           movie.runtime > 0 && 
-          movie.available_in_canada === true
+          movie.isStreamable === true
         );
 
         return {
@@ -251,18 +262,25 @@ class TMDBAPI {
       const providers = await this.makeRequest(providersUrl);
       
       const canadianProviders = providers.results?.CA;
-      const availableInCanada = !!(canadianProviders?.flatrate || canadianProviders?.rent || canadianProviders?.buy);
       
-      const streamingProviders = [];
-      if (canadianProviders?.flatrate) {
-        streamingProviders.push(...canadianProviders.flatrate.map((p: any) => p.provider_name));
-      }
-      if (canadianProviders?.rent) {
-        streamingProviders.push(...canadianProviders.rent.map((p: any) => p.provider_name));
-      }
-      if (canadianProviders?.buy) {
-        streamingProviders.push(...canadianProviders.buy.map((p: any) => p.provider_name));
-      }
+      // CRITICAL CHANGE: Only consider flatrate (subscription) providers
+      const flatrateProviders = canadianProviders?.flatrate || [];
+      
+      // Check if any flatrate providers are in our major streamers whitelist
+      const isStreamableOnMajorService = flatrateProviders.some((provider: any) => 
+        this.majorStreamers.includes(provider.provider_name)
+      );
+      
+      // Only get streaming provider names from flatrate providers that are major streamers
+      const majorStreamingProviders = flatrateProviders
+        .filter((provider: any) => this.majorStreamers.includes(provider.provider_name))
+        .map((provider: any) => provider.provider_name);
+
+      console.log(`Movie: ${movie.title}`, {
+        flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
+        majorStreamingProviders,
+        isStreamableOnMajorService
+      });
 
       return {
         id: movie.id,
@@ -272,8 +290,8 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: details.genres?.map((g: any) => g.name) || [],
         short_description: movie.overview || undefined,
-        available_in_canada: availableInCanada,
-        streaming_providers: [...new Set(streamingProviders)],
+        isStreamable: isStreamableOnMajorService, // Renamed and using new logic
+        streaming_providers: majorStreamingProviders, // Only major streamers
         vote_average: movie.vote_average,
         release_date: movie.release_date
       };
@@ -287,7 +305,7 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: [],
         short_description: movie.overview || undefined,
-        available_in_canada: false,
+        isStreamable: false, // Default to false if we can't determine
         streaming_providers: [],
         vote_average: movie.vote_average,
         release_date: movie.release_date

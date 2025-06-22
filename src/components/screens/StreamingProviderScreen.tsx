@@ -155,7 +155,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
                 <span className="text-4xl">{provider.logo}</span>
                 <div>
                   <h1 className="text-3xl font-bold text-white">{provider.name}</h1>
-                  <p className="text-white/70">Movies available in Canada</p>
+                  <p className="text-white/70">Movies available on major streaming services</p>
                 </div>
               </div>
             </div>
