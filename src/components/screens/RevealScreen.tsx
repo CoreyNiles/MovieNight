@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Clock, Calendar, Star } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
@@ -43,9 +43,9 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
     }
   }, [phase, onRevealComplete]);
 
-  if (!dailyCycle) return null;
+  const winnerData = useMemo(() => {
+    if (!dailyCycle) return null;
 
-  const calculateWinner = () => {
     const scores: Record<string, number> = {};
     const allNominations = Object.values(dailyCycle.nominations).flat();
     const uniqueMovieIds = [...new Set(allNominations)];
@@ -85,14 +85,24 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
       });
 
     // Check for tie
-    if (sortedMovies.length > 1 && sortedMovies[0].score === sortedMovies[1].score) {
+    const hasTie = sortedMovies.length > 1 && sortedMovies[0].score === sortedMovies[1].score;
+
+    return {
+      winner: sortedMovies[0],
+      hasTie
+    };
+  }, [dailyCycle, sharedMovies, config.underdog_boost_threshold]);
+
+  // Handle tie detection as a side effect
+  useEffect(() => {
+    if (winnerData?.hasTie) {
       setTieOccurred(true);
     }
+  }, [winnerData?.hasTie]);
 
-    return sortedMovies[0];
-  };
+  if (!dailyCycle || !winnerData) return null;
 
-  const winner = calculateWinner();
+  const { winner } = winnerData;
 
   // If no winner found in shared movies, show a generic winner
   const displayWinner = winner || {
