@@ -42,9 +42,6 @@ export const useDailyCycle = () => {
       if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + VOTE_POINTS.THIRD_PLACE;
     });
 
-    // Apply underdog boost (this would need access to shared movies for streak data)
-    // For now, we'll handle this in the component that has access to shared movies
-
     // Find winner (highest score)
     const sortedMovies = uniqueMovieIds
       .map(id => ({ movie_id: id, score: scores[id] }))
@@ -53,7 +50,8 @@ export const useDailyCycle = () => {
     return sortedMovies[0] || null;
   };
 
-  const checkAndAdvanceStatus = async (cycle: DailyCycle, cycleRef: any) => {
+  const checkAndAdvanceStatus = async (cycle: DailyCycle) => {
+    const cycleRef = doc(db, 'dailyCycles', cycle.id);
     const decisions = Object.entries(cycle.decisions);
     const nominations = Object.entries(cycle.nominations);
     const votes = Object.entries(cycle.votes);
@@ -69,45 +67,59 @@ export const useDailyCycle = () => {
       votes: votes.length
     });
     
-    switch (cycle.current_status) {
-      case DailyState.WAITING_FOR_DECISIONS:
-        // Auto-advance if we have at least 2 yes decisions and all decisions are in
-        // OR if we have 3 decisions total (regardless of yes/no split)
-        if ((yesDecisions.length >= CONSTANTS.MIN_YES_DECISIONS && decisions.length >= CONSTANTS.MIN_TOTAL_DECISIONS) || 
-            (decisions.length >= CONSTANTS.MIN_TOTAL_DECISIONS && yesDecisions.length >= 1)) {
-          
-          if (yesDecisions.length >= CONSTANTS.MIN_YES_DECISIONS) {
-            console.log('Auto-advancing to nominations - enough yes votes');
-            try {
+    try {
+      switch (cycle.current_status) {
+        case DailyState.WAITING_FOR_DECISIONS:
+          // Auto-advance if we have enough decisions
+          if (decisions.length >= CONSTANTS.MIN_TOTAL_DECISIONS) {
+            if (yesDecisions.length >= CONSTANTS.MIN_YES_DECISIONS) {
+              console.log('Auto-advancing to nominations - enough yes votes');
               await updateDoc(cycleRef, { current_status: DailyState.GATHERING_NOMINATIONS });
-            } catch (error) {
-              console.error('Failed to auto-advance to nominations:', error);
+            } else {
+              console.log('Not enough people want to watch tonight');
+              // Could reset for tomorrow or show a message
             }
-          } else {
-            console.log('Not enough people want to watch tonight');
-            // Could reset for tomorrow or show a message
           }
-        }
-        break;
-        
-      case DailyState.GATHERING_NOMINATIONS:
-        // Auto-advance if all "yes" people have nominated
-        if (yesDecisions.length > 0 && nominations.length >= yesDecisions.length) {
-          console.log('Auto-advancing to voting - all nominations received');
-          try {
+          break;
+          
+        case DailyState.GATHERING_NOMINATIONS:
+          // Auto-advance if all "yes" people have nominated
+          // Use a more robust check: ensure we have nominations from all yes voters
+          const yesUserIds = yesDecisions.map(([userId, _]) => userId);
+          const nominationUserIds = nominations.map(([userId, _]) => userId);
+          const allYesUsersNominated = yesUserIds.every(userId => nominationUserIds.includes(userId));
+          
+          console.log('Nomination check:', {
+            yesUserIds,
+            nominationUserIds,
+            allYesUsersNominated,
+            yesCount: yesUserIds.length,
+            nominationCount: nominations.length
+          });
+          
+          if (yesUserIds.length > 0 && allYesUsersNominated) {
+            console.log('Auto-advancing to voting - all yes voters have nominated');
             await updateDoc(cycleRef, { current_status: DailyState.GATHERING_VOTES });
-          } catch (error) {
-            console.error('Failed to auto-advance to voting:', error);
           }
-        }
-        break;
-        
-      case DailyState.GATHERING_VOTES:
-        // Auto-advance if all "yes" people have voted
-        if (yesDecisions.length > 0 && votes.length >= yesDecisions.length) {
-          console.log('Auto-advancing to reveal - all votes received');
-          const winner = calculateWinner(cycle);
-          try {
+          break;
+          
+        case DailyState.GATHERING_VOTES:
+          // Auto-advance if all "yes" people have voted
+          const yesVoterIds = yesDecisions.map(([userId, _]) => userId);
+          const voteUserIds = votes.map(([userId, _]) => userId);
+          const allYesUsersVoted = yesVoterIds.every(userId => voteUserIds.includes(userId));
+          
+          console.log('Voting check:', {
+            yesVoterIds,
+            voteUserIds,
+            allYesUsersVoted,
+            yesCount: yesVoterIds.length,
+            voteCount: votes.length
+          });
+          
+          if (yesVoterIds.length > 0 && allYesUsersVoted) {
+            console.log('Auto-advancing to reveal - all yes voters have voted');
+            const winner = calculateWinner(cycle);
             await updateDoc(cycleRef, { 
               current_status: DailyState.REVEAL,
               winning_movie: winner
@@ -121,11 +133,11 @@ export const useDailyCycle = () => {
                 console.error('Error auto-advancing to dashboard:', error);
               }
             }, CONSTANTS.REVEAL_TO_DASHBOARD_DELAY);
-          } catch (error) {
-            console.error('Failed to auto-advance to reveal:', error);
           }
-        }
-        break;
+          break;
+      }
+    } catch (error) {
+      console.error('Error in auto-advance logic:', error);
     }
   };
 
@@ -177,13 +189,18 @@ export const useDailyCycle = () => {
     return unsubscribe;
   }, []);
 
-  // Use useEffect to handle auto-advancement when dailyCycle changes
+  // CRITICAL FIX: Use useEffect to handle auto-advancement when dailyCycle changes
+  // This ensures the check runs reliably after every database update
   useEffect(() => {
     if (dailyCycle) {
-      const cycleRef = doc(db, 'dailyCycles', dailyCycle.id);
-      checkAndAdvanceStatus(dailyCycle, cycleRef);
+      // Add a small delay to ensure all database writes are complete
+      const timer = setTimeout(() => {
+        checkAndAdvanceStatus(dailyCycle);
+      }, 500);
+      
+      return () => clearTimeout(timer);
     }
-  }, [dailyCycle]);
+  }, [dailyCycle?.decisions, dailyCycle?.nominations, dailyCycle?.votes, dailyCycle?.current_status]);
 
   const updateCycleStatus = async (status: DailyState) => {
     try {

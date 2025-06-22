@@ -26,7 +26,7 @@ interface TMDBSearchResponse {
 }
 
 interface FilterOptions {
-  year_range?: { min: number; max: number };
+  decade?: string;
   genres?: number[];
   min_rating?: number;
   sort_by?: 'popularity.desc' | 'release_date.desc' | 'vote_average.desc';
@@ -69,7 +69,12 @@ class TMDBAPI {
           })
         );
 
-        const validMovies = moviesWithDetails.filter(movie => movie.runtime && movie.runtime > 0);
+        // Filter out unreleased movies and movies without runtime
+        const validMovies = moviesWithDetails.filter(movie => 
+          movie.runtime && 
+          movie.runtime > 0 && 
+          movie.available_in_canada === true
+        );
 
         return {
           items: validMovies,
@@ -98,7 +103,12 @@ class TMDBAPI {
           })
         );
 
-        const validMovies = moviesWithDetails.filter(movie => movie.runtime && movie.runtime > 0);
+        // Filter out unreleased movies and movies without runtime
+        const validMovies = moviesWithDetails.filter(movie => 
+          movie.runtime && 
+          movie.runtime > 0 && 
+          movie.available_in_canada === true
+        );
 
         return {
           items: validMovies,
@@ -120,8 +130,10 @@ class TMDBAPI {
       let url = `${TMDB_API_BASE}/discover/movie?api_key=${TMDB_API_KEY}&with_watch_providers=${providerId}&watch_region=CA&page=${page}`;
       
       // Apply filters
-      if (filters.year_range) {
-        url += `&primary_release_date.gte=${filters.year_range.min}-01-01&primary_release_date.lte=${filters.year_range.max}-12-31`;
+      if (filters.decade) {
+        const startYear = parseInt(filters.decade);
+        const endYear = startYear + 9;
+        url += `&primary_release_date.gte=${startYear}-01-01&primary_release_date.lte=${endYear}-12-31`;
       }
       
       if (filters.genres && filters.genres.length > 0) {
@@ -147,7 +159,12 @@ class TMDBAPI {
           })
         );
 
-        const validMovies = moviesWithDetails.filter(movie => movie.runtime && movie.runtime > 0);
+        // Filter out unreleased movies and movies without runtime
+        const validMovies = moviesWithDetails.filter(movie => 
+          movie.runtime && 
+          movie.runtime > 0 && 
+          movie.available_in_canada === true
+        );
 
         return {
           items: validMovies,
@@ -176,7 +193,12 @@ class TMDBAPI {
           })
         );
 
-        const validMovies = moviesWithDetails.filter(movie => movie.runtime && movie.runtime > 0);
+        // Filter out unreleased movies and movies without runtime
+        const validMovies = moviesWithDetails.filter(movie => 
+          movie.runtime && 
+          movie.runtime > 0 && 
+          movie.available_in_canada === true
+        );
 
         return {
           items: validMovies,
@@ -201,6 +223,18 @@ class TMDBAPI {
       console.error('Failed to get movie details from TMDB:', error);
       return null;
     }
+  }
+
+  getAvailableDecades(): string[] {
+    const currentYear = new Date().getFullYear();
+    const currentDecade = Math.floor(currentYear / 10) * 10;
+    const decades = [];
+    
+    for (let decade = currentDecade; decade >= 1950; decade -= 10) {
+      decades.push(`${decade}s`);
+    }
+    
+    return decades;
   }
 
   private async enrichMovieData(movie: any): Promise<TMDBMovie> {

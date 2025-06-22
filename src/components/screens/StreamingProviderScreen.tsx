@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Filter, SlidersHorizontal, Check, Star, Calendar, Clock, MapPin, Tv } from 'lucide-react';
+import { ArrowLeft, Check, Star, Calendar, Clock, Tv } from 'lucide-react';
 import { tmdbAPI, TMDBMovie, FilterOptions } from '../../services/tmdbAPI';
+import { MovieCarousel } from '../common/MovieCarousel';
 import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
@@ -20,14 +21,16 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   const { providerId } = useParams<{ providerId: string }>();
   const navigate = useNavigate();
   
-  const [movies, setMovies] = useState<TMDBMovie[]>([]);
+  const [trendingMovies, setTrendingMovies] = useState<TMDBMovie[]>([]);
+  const [genreMovies, setGenreMovies] = useState<Record<string, TMDBMovie[]>>({});
+  const [filteredMovies, setFilteredMovies] = useState<TMDBMovie[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   
   const [filters, setFilters] = useState<FilterOptions>({
-    year_range: { min: 1990, max: new Date().getFullYear() },
+    decade: undefined,
     genres: [],
     min_rating: 0,
     sort_by: 'popularity.desc'
@@ -37,13 +40,44 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
 
   useEffect(() => {
     if (providerId) {
-      loadMovies();
+      loadProviderContent();
     }
-  }, [providerId, filters, currentPage]);
+  }, [providerId]);
 
-  const loadMovies = async () => {
+  useEffect(() => {
+    if (showFilters) {
+      loadFilteredMovies();
+    }
+  }, [filters, currentPage, showFilters]);
+
+  const loadProviderContent = async () => {
     try {
       setLoading(true);
+      
+      // Load trending movies for this provider
+      const trendingResponse = await tmdbAPI.getMoviesByProvider(parseInt(providerId!), { sort_by: 'popularity.desc' });
+      setTrendingMovies(trendingResponse.items.slice(0, 10));
+      
+      // Load genre-specific carousels
+      const genreData: Record<string, TMDBMovie[]> = {};
+      for (const genre of CONSTANTS.POPULAR_GENRES.slice(0, 4)) {
+        const genreResponse = await tmdbAPI.getMoviesByProvider(
+          parseInt(providerId!), 
+          { genres: [genre.id] }
+        );
+        genreData[genre.name] = genreResponse.items.slice(0, 20);
+      }
+      setGenreMovies(genreData);
+      
+    } catch (error) {
+      toast.error('Failed to load movies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFilteredMovies = async () => {
+    try {
       const response = await tmdbAPI.getMoviesByProvider(
         parseInt(providerId!),
         filters,
@@ -51,16 +85,14 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
       );
       
       if (currentPage === 1) {
-        setMovies(response.items);
+        setFilteredMovies(response.items);
       } else {
-        setMovies(prev => [...prev, ...response.items]);
+        setFilteredMovies(prev => [...prev, ...response.items]);
       }
       
       setTotalPages(response.total_pages);
     } catch (error) {
-      toast.error('Failed to load movies');
-    } finally {
-      setLoading(false);
+      toast.error('Failed to load filtered movies');
     }
   };
 
@@ -85,7 +117,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   };
 
   const loadMore = () => {
-    if (currentPage < totalPages && !loading) {
+    if (currentPage < totalPages) {
       setCurrentPage(prev => prev + 1);
     }
   };
@@ -128,12 +160,42 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
               </div>
             </div>
             
+            <div className="text-white/70">
+              {selectedMovies.length}/{maxSelections} selected
+            </div>
+          </div>
+
+          {/* Netflix-style carousels */}
+          {!showFilters && (
+            <>
+              <MovieCarousel
+                title={`🔥 Trending on ${provider.name}`}
+                movies={trendingMovies}
+                selectedMovies={selectedMovies}
+                onMovieSelect={handleMovieSelect}
+                loading={loading}
+              />
+
+              {CONSTANTS.POPULAR_GENRES.slice(0, 4).map((genre) => (
+                <MovieCarousel
+                  key={genre.id}
+                  title={`${genre.name} on ${provider.name}`}
+                  movies={genreMovies[genre.name] || []}
+                  selectedMovies={selectedMovies}
+                  onMovieSelect={handleMovieSelect}
+                  loading={loading}
+                />
+              ))}
+            </>
+          )}
+
+          {/* Advanced Filters Toggle */}
+          <div className="mb-6">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors text-white"
+              className="bg-white/10 hover:bg-white/20 px-6 py-3 rounded-lg transition-colors text-white font-semibold"
             >
-              <SlidersHorizontal className="h-4 w-4" />
-              <span>Filters</span>
+              {showFilters ? 'Hide Advanced Filters' : 'Show Advanced Filters'}
             </button>
           </div>
 
@@ -146,98 +208,119 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
               className="bg-white/10 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/20"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Year Range */}
+                {/* Decade Filter */}
                 <div>
-                  <label className="block text-white font-medium mb-2">Release Year</label>
-                  <div className="space-y-2">
-                    <input
-                      type="range"
-                      min="1990"
-                      max={new Date().getFullYear()}
-                      value={filters.year_range?.min || 1990}
-                      onChange={(e) => handleFilterChange({
-                        year_range: { ...filters.year_range!, min: parseInt(e.target.value) }
-                      })}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-white/70 text-sm">
-                      <span>{filters.year_range?.min}</span>
-                      <span>{filters.year_range?.max}</span>
-                    </div>
+                  <label className="block text-white font-medium mb-3">Release Decade</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => handleFilterChange({ decade: undefined })}
+                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                        !filters.decade 
+                          ? 'bg-purple-500 text-white' 
+                          : 'bg-white/10 text-white/80 hover:bg-white/20'
+                      }`}
+                    >
+                      All
+                    </button>
+                    {tmdbAPI.getAvailableDecades().map(decade => (
+                      <button
+                        key={decade}
+                        onClick={() => handleFilterChange({ decade: decade.replace('s', '') })}
+                        className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                          filters.decade === decade.replace('s', '')
+                            ? 'bg-purple-500 text-white' 
+                            : 'bg-white/10 text-white/80 hover:bg-white/20'
+                        }`}
+                      >
+                        {decade}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {/* Genres */}
+                {/* Genres Filter */}
                 <div>
-                  <label className="block text-white font-medium mb-2">Genres</label>
-                  <select
-                    multiple
-                    value={filters.genres?.map(String) || []}
-                    onChange={(e) => {
-                      const selectedGenres = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                      handleFilterChange({ genres: selectedGenres });
-                    }}
-                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm"
-                  >
+                  <label className="block text-white font-medium mb-3">Genres</label>
+                  <div className="flex flex-wrap gap-2">
                     {CONSTANTS.POPULAR_GENRES.map(genre => (
-                      <option key={genre.id} value={genre.id} className="bg-gray-800">
+                      <button
+                        key={genre.id}
+                        onClick={() => {
+                          const currentGenres = filters.genres || [];
+                          const newGenres = currentGenres.includes(genre.id)
+                            ? currentGenres.filter(id => id !== genre.id)
+                            : [...currentGenres, genre.id];
+                          handleFilterChange({ genres: newGenres });
+                        }}
+                        className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                          filters.genres?.includes(genre.id)
+                            ? 'bg-purple-500 text-white' 
+                            : 'bg-white/10 text-white/80 hover:bg-white/20'
+                        }`}
+                      >
                         {genre.name}
-                      </option>
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
-                {/* Rating */}
+                {/* Rating Filter */}
                 <div>
-                  <label className="block text-white font-medium mb-2">Min Rating</label>
-                  <select
-                    value={filters.min_rating || 0}
-                    onChange={(e) => handleFilterChange({ min_rating: parseFloat(e.target.value) })}
-                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-                  >
-                    <option value={0}>Any Rating</option>
-                    <option value={6}>6.0+</option>
-                    <option value={7}>7.0+</option>
-                    <option value={8}>8.0+</option>
-                  </select>
+                  <label className="block text-white font-medium mb-3">Minimum Rating</label>
+                  <div className="space-y-2">
+                    {[
+                      { value: 0, label: 'Any Rating' },
+                      { value: 6, label: '6.0+' },
+                      { value: 7, label: '7.0+' },
+                      { value: 8, label: '8.0+' }
+                    ].map(option => (
+                      <label key={option.value} className="flex items-center space-x-2 text-white/80">
+                        <input
+                          type="radio"
+                          name="rating"
+                          value={option.value}
+                          checked={filters.min_rating === option.value}
+                          onChange={() => handleFilterChange({ min_rating: option.value })}
+                          className="text-purple-500"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Sort By */}
+                {/* Sort By Filter */}
                 <div>
-                  <label className="block text-white font-medium mb-2">Sort By</label>
-                  <select
-                    value={filters.sort_by || 'popularity.desc'}
-                    onChange={(e) => handleFilterChange({ sort_by: e.target.value as FilterOptions['sort_by'] })}
-                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-                  >
-                    <option value="popularity.desc">Most Popular</option>
-                    <option value="release_date.desc">Newest First</option>
-                    <option value="vote_average.desc">Highest Rated</option>
-                  </select>
+                  <label className="block text-white font-medium mb-3">Sort By</label>
+                  <div className="space-y-2">
+                    {[
+                      { value: 'popularity.desc', label: 'Most Popular' },
+                      { value: 'release_date.desc', label: 'Newest First' },
+                      { value: 'vote_average.desc', label: 'Highest Rated' }
+                    ].map(option => (
+                      <label key={option.value} className="flex items-center space-x-2 text-white/80">
+                        <input
+                          type="radio"
+                          name="sort"
+                          value={option.value}
+                          checked={filters.sort_by === option.value}
+                          onChange={() => handleFilterChange({ sort_by: option.value as FilterOptions['sort_by'] })}
+                          className="text-purple-500"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>
           )}
 
-          {/* Selection Counter */}
-          <div className="mb-6 text-center">
-            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-lg px-4 py-2 rounded-lg">
-              <span className="text-white/80">Selected:</span>
-              <span className="text-white font-semibold">{selectedMovies.length}/{maxSelections}</span>
-            </div>
-          </div>
-
-          {/* Movies Grid */}
-          {loading && currentPage === 1 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {[...Array(12)].map((_, i) => (
-                <div key={i} className="bg-white/10 rounded-xl h-96 animate-pulse" />
-              ))}
-            </div>
-          ) : (
+          {/* Filtered Movies Grid */}
+          {showFilters && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {movies.map((movie) => {
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+                {filteredMovies.map((movie) => {
                   const movieId = movie.id.toString();
                   const isSelected = selectedMovies.includes(movieId);
                   
@@ -285,16 +368,6 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
                           </div>
                         )}
 
-                        {movie.genre_names && movie.genre_names.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {movie.genre_names.slice(0, 3).map((genre) => (
-                              <span key={genre} className="bg-white/10 text-white/80 px-2 py-1 rounded text-xs">
-                                {genre}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
                         <div className="flex items-center space-x-1 text-green-400 text-xs">
                           <Tv className="h-3 w-3" />
                           <span>Available on {provider.name}</span>
@@ -313,13 +386,12 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
 
               {/* Load More Button */}
               {currentPage < totalPages && (
-                <div className="text-center mt-8">
+                <div className="text-center">
                   <button
                     onClick={loadMore}
-                    disabled={loading}
-                    className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+                    className="bg-purple-500 hover:bg-purple-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
                   >
-                    {loading ? 'Loading...' : 'Load More Movies'}
+                    Load More Movies
                   </button>
                 </div>
               )}

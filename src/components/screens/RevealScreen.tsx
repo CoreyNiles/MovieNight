@@ -8,7 +8,11 @@ import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
 import { CONSTANTS, VOTE_POINTS } from '../../constants';
 
-export const RevealScreen: React.FC = () => {
+interface RevealScreenProps {
+  onRevealComplete?: () => void;
+}
+
+export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) => {
   const { user } = useAuth();
   const { sharedMovies } = useSharedMovies();
   const { dailyCycle } = useDailyCycle();
@@ -27,6 +31,17 @@ export const RevealScreen: React.FC = () => {
       setTimeout(() => setPhase('reveal'), 1000);
     }
   }, [phase]);
+
+  useEffect(() => {
+    if (phase === 'reveal') {
+      // Mark reveal as seen after animation completes
+      setTimeout(() => {
+        if (onRevealComplete) {
+          onRevealComplete();
+        }
+      }, 5000); // Give time for user to see the reveal
+    }
+  }, [phase, onRevealComplete]);
 
   if (!dailyCycle) return null;
 

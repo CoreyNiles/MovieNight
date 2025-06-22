@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuth } from './hooks/useAuth';
@@ -10,11 +10,43 @@ import { VotingScreen } from './components/screens/VotingScreen';
 import { RevealScreen } from './components/screens/RevealScreen';
 import { DashboardScreen } from './components/screens/DashboardScreen';
 import { StreamingProviderScreen } from './components/screens/StreamingProviderScreen';
+import { ScrollToTop } from './components/common/ScrollToTop';
 import { CONSTANTS } from './constants';
 
 function App() {
   const { user, loading: authLoading } = useAuth();
   const { dailyCycle, loading: cycleLoading } = useDailyCycle();
+  const [selectedMovies, setSelectedMovies] = useState<string[]>([]);
+
+  // Individual reveal tracking using localStorage
+  const [hasSeenReveal, setHasSeenReveal] = useState(false);
+
+  useEffect(() => {
+    if (dailyCycle) {
+      const today = dailyCycle.id;
+      const lastRevealSeen = localStorage.getItem('lastRevealSeen');
+      setHasSeenReveal(lastRevealSeen === today);
+    }
+  }, [dailyCycle]);
+
+  const markRevealAsSeen = () => {
+    if (dailyCycle) {
+      localStorage.setItem('lastRevealSeen', dailyCycle.id);
+      setHasSeenReveal(true);
+    }
+  };
+
+  const handleMovieSelect = (movieId: string) => {
+    setSelectedMovies(prev => {
+      if (prev.includes(movieId)) {
+        return prev.filter(id => id !== movieId);
+      } else if (prev.length < CONSTANTS.MAX_NOMINATIONS_PER_USER) {
+        return [...prev, movieId];
+      } else {
+        return prev;
+      }
+    });
+  };
 
   // Show loading while checking authentication
   if (authLoading || cycleLoading) {
@@ -32,6 +64,7 @@ function App() {
   if (!user) {
     return (
       <Router>
+        <ScrollToTop />
         <LoginForm />
         <Toaster position="top-right" />
       </Router>
@@ -49,7 +82,12 @@ function App() {
       case 'GATHERING_VOTES':
         return <VotingScreen />;
       case 'REVEAL':
-        return <RevealScreen />;
+        // Individual reveal logic: only show reveal if user hasn't seen it today
+        if (!hasSeenReveal) {
+          return <RevealScreen onRevealComplete={markRevealAsSeen} />;
+        } else {
+          return <DashboardScreen />;
+        }
       case 'DASHBOARD_VIEW':
         return <DashboardScreen />;
       default:
@@ -59,6 +97,7 @@ function App() {
 
   return (
     <Router>
+      <ScrollToTop />
       <div className="App">
         <Routes>
           {/* Main app flow */}
@@ -70,8 +109,8 @@ function App() {
             path="/provider/:providerId" 
             element={
               <StreamingProviderScreen 
-                selectedMovies={[]} // This will be managed by the component itself
-                onMovieSelect={() => {}} // This will be managed by the component itself
+                selectedMovies={selectedMovies}
+                onMovieSelect={handleMovieSelect}
                 maxSelections={CONSTANTS.MAX_NOMINATIONS_PER_USER}
               />
             } 
