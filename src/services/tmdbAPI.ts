@@ -13,7 +13,7 @@ interface TMDBMovie {
   genre_names?: string[];
   short_description?: string;
   imdb_id?: string;
-  isStreamable?: boolean; // Renamed from available_in_canada for clarity
+  isStreamable?: boolean;
   streaming_providers?: string[];
   vote_average?: number;
   release_date?: string;
@@ -33,27 +33,6 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
-  // Keywords for flexible provider matching (instead of exact names)
-  private readonly majorStreamerKeywords = [
-    'netflix',
-    'prime video',
-    'apple tv',
-    'tubi',
-    'mubi',
-    'crave',
-    'disney plus'
-  ];
-  // Keywords for flexible provider matching (instead of exact names)
-  private readonly majorStreamerKeywords = [
-    'netflix',
-    'prime video',
-    'apple tv',
-    'tubi',
-    'mubi',
-    'crave',
-    'disney plus'
-  ];
-
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     try {
       const response = await fetch(url, {
@@ -90,14 +69,12 @@ class TMDBAPI {
           })
         );
 
-        // Filter out movies that aren't streamable on major services
+        // Only filter out movies without basic data - NO streaming restrictions
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.runtime && 
-          movie.runtime > 0 && 
-          movie.isStreamable === true
+          movie.title && movie.title.trim().length > 0
         );
 
-        // Sort by vote average (highest rated first)
+        // Sort by popularity
         const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
 
         return {
@@ -127,18 +104,13 @@ class TMDBAPI {
           })
         );
 
-        // Filter out movies that aren't streamable on major services
+        // Only filter out movies without basic data - NO streaming restrictions
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.runtime && 
-          movie.runtime > 0 && 
-          movie.isStreamable === true
+          movie.title && movie.title.trim().length > 0
         );
 
-        // Sort by vote average (highest rated first)
-        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-
         return {
-          items: sortedMovies,
+          items: validMovies,
           total_pages: response.total_pages || 1,
           page: response.page || 1
         };
@@ -186,18 +158,13 @@ class TMDBAPI {
           })
         );
 
-        // Filter out movies that aren't streamable on major services
+        // Only filter out movies without basic data - NO streaming restrictions
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.runtime && 
-          movie.runtime > 0 && 
-          movie.isStreamable === true
+          movie.title && movie.title.trim().length > 0
         );
 
-        // Sort by vote average (highest rated first)
-        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-
         return {
-          items: sortedMovies,
+          items: validMovies,
           total_pages: response.total_pages || 1,
           page: response.page || 1
         };
@@ -218,11 +185,14 @@ class TMDBAPI {
       const initialResponse = await this.makeRequest(initialUrl);
       
       if (!initialResponse.results || initialResponse.results.length === 0) {
+        console.log('No results found for query:', query);
         return { items: [], total_pages: 1, page: 1 };
       }
 
-      const totalPages = Math.min(initialResponse.total_pages || 1, 10); // Limit to 10 pages to avoid excessive API calls
+      const totalPages = Math.min(initialResponse.total_pages || 1, 20); // Increased to 20 pages for comprehensive search
       let allResults = [...initialResponse.results];
+
+      console.log(`Found ${initialResponse.total_results} total results across ${totalPages} pages for "${query}"`);
 
       // Fetch additional pages if available
       if (totalPages > 1) {
@@ -230,7 +200,7 @@ class TMDBAPI {
         
         for (let currentPage = 2; currentPage <= totalPages; currentPage++) {
           // Add delay to avoid hitting API rate limits
-          await new Promise(resolve => setTimeout(resolve, 250));
+          await new Promise(resolve => setTimeout(resolve, 200));
           
           try {
             const pageUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${currentPage}&region=CA`;
@@ -249,11 +219,11 @@ class TMDBAPI {
       console.log(`Found ${allResults.length} total movies across ${totalPages} pages`);
 
       if (allResults.length > 0) {
-        // Process all movies with streaming data
+        // Process all movies - but do it more efficiently
         const moviesWithDetails = [];
         
-        // Process in batches to avoid overwhelming the API
-        const batchSize = 10;
+        // Process in smaller batches to avoid overwhelming the API
+        const batchSize = 5;
         for (let i = 0; i < allResults.length; i += batchSize) {
           const batch = allResults.slice(i, i + batchSize);
           
@@ -263,7 +233,20 @@ class TMDBAPI {
                 return await this.enrichMovieData(movie);
               } catch (error) {
                 console.warn(`Failed to enrich movie ${movie.title}:`, error);
-                return null;
+                // Return basic movie data even if enrichment fails
+                return {
+                  id: movie.id,
+                  title: movie.title,
+                  poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
+                  runtime: undefined,
+                  release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
+                  genre_names: [],
+                  short_description: movie.overview || undefined,
+                  isStreamable: true, // Default to true for search results
+                  streaming_providers: [],
+                  vote_average: movie.vote_average,
+                  release_date: movie.release_date
+                };
               }
             })
           );
@@ -272,19 +255,26 @@ class TMDBAPI {
           
           // Add delay between batches
           if (i + batchSize < allResults.length) {
-            await new Promise(resolve => setTimeout(resolve, 250));
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
 
-        // Filter out movies that aren't streamable on major services
+        console.log(`Successfully processed ${moviesWithDetails.length} movies`);
+
+        // CRITICAL: Remove ALL filtering - show every movie found
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.runtime && 
-          movie.runtime > 0 && 
-          movie.isStreamable === true
+          movie && movie.title && movie.title.trim().length > 0
         );
 
-        // Sort by vote average (highest rated first)
-        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+        // Sort by relevance (vote average and popularity)
+        const sortedMovies = validMovies.sort((a, b) => {
+          // Prioritize movies with higher ratings
+          const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
+          const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
+          return scoreB - scoreA;
+        });
+
+        console.log(`Returning ${sortedMovies.length} valid movies`);
 
         return {
           items: sortedMovies,
@@ -327,42 +317,41 @@ class TMDBAPI {
     try {
       // Get detailed info if we only have basic data
       let details = movie;
-      if (!movie.runtime) {
-        const detailUrl = `${TMDB_API_BASE}/movie/${movie.id}?api_key=${TMDB_API_KEY}`;
-        details = await this.makeRequest(detailUrl);
+      if (!movie.runtime && movie.id) {
+        try {
+          const detailUrl = `${TMDB_API_BASE}/movie/${movie.id}?api_key=${TMDB_API_KEY}`;
+          details = await this.makeRequest(detailUrl);
+        } catch (error) {
+          console.warn(`Failed to get details for movie ${movie.id}:`, error);
+          // Continue with basic data
+        }
       }
       
-      // Get Canadian watch providers
-      const providersUrl = `${TMDB_API_BASE}/movie/${movie.id}/watch/providers?api_key=${TMDB_API_KEY}`;
-      const providers = await this.makeRequest(providersUrl);
+      // Get Canadian watch providers (but don't filter based on them)
+      let canadianProviders = null;
+      let streamingProviders: string[] = [];
+      let isStreamable = true; // Default to true - assume movies are available somehow
       
-      const canadianProviders = providers.results?.CA;
-      
-      // CRITICAL CHANGE: Only consider flatrate (subscription) providers
-      const flatrateProviders = canadianProviders?.flatrate || [];
-      
-      // IMPROVEMENT 1: Use flexible keyword matching instead of exact string matching
-      const isStreamableOnMajorService = flatrateProviders.some((provider: any) =>
-        this.majorStreamerKeywords.some(keyword =>
-          provider.provider_name.toLowerCase().includes(keyword)
-        )
-      );
-      
-      // Only get streaming provider names from flatrate providers that match our keywords
-      const majorStreamingProviders = flatrateProviders
-        .filter((provider: any) => 
-          this.majorStreamerKeywords.some(keyword =>
-            provider.provider_name.toLowerCase().includes(keyword)
-          )
-        )
-        .map((provider: any) => provider.provider_name);
-
-      console.log(`Movie: ${movie.title}`, {
-        flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
-        majorStreamingProviders,
-        isStreamableOnMajorService,
-        voteAverage: movie.vote_average
-      });
+      try {
+        const providersUrl = `${TMDB_API_BASE}/movie/${movie.id}/watch/providers?api_key=${TMDB_API_KEY}`;
+        const providers = await this.makeRequest(providersUrl);
+        canadianProviders = providers.results?.CA;
+        
+        if (canadianProviders) {
+          // Get all provider types (subscription, rental, purchase)
+          const allProviders = [
+            ...(canadianProviders.flatrate || []),
+            ...(canadianProviders.rent || []),
+            ...(canadianProviders.buy || [])
+          ];
+          
+          streamingProviders = [...new Set(allProviders.map((provider: any) => provider.provider_name))];
+          isStreamable = streamingProviders.length > 0;
+        }
+      } catch (error) {
+        console.warn(`Failed to get providers for movie ${movie.id}:`, error);
+        // Continue without provider info
+      }
 
       return {
         id: movie.id,
@@ -372,13 +361,14 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: details.genres?.map((g: any) => g.name) || [],
         short_description: movie.overview || undefined,
-        isStreamable: isStreamableOnMajorService,
-        streaming_providers: majorStreamingProviders,
+        isStreamable: isStreamable,
+        streaming_providers: streamingProviders,
         vote_average: movie.vote_average,
         release_date: movie.release_date
       };
     } catch (error) {
       console.error('Error enriching movie data:', error);
+      // Return basic data even if enrichment fails
       return {
         id: movie.id,
         title: movie.title,
@@ -387,7 +377,7 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: [],
         short_description: movie.overview || undefined,
-        isStreamable: false, // Default to false if we can't determine
+        isStreamable: true, // Default to true
         streaming_providers: [],
         vote_average: movie.vote_average,
         release_date: movie.release_date
