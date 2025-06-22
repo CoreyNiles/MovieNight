@@ -207,8 +207,11 @@ class TMDBAPI {
     try {
       console.log('Searching for movies:', query);
       
+      // TASK 1: Fix case-insensitive search - convert query to lowercase
+      const lowerCaseQuery = query.toLowerCase();
+      
       // First, get the initial page to determine total pages
-      const initialUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1&region=CA`;
+      const initialUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=1&region=CA`;
       const initialResponse = await this.makeRequest(initialUrl);
       
       if (!initialResponse.results || initialResponse.results.length === 0) {
@@ -216,7 +219,7 @@ class TMDBAPI {
         return { items: [], total_pages: 1, page: 1 };
       }
 
-      const totalPages = Math.min(initialResponse.total_pages || 1, 20); // Increased to 20 pages for comprehensive search
+      const totalPages = Math.min(initialResponse.total_pages || 1, 20); // Get comprehensive results
       let allResults = [...initialResponse.results];
 
       console.log(`Found ${initialResponse.total_results} total results across ${totalPages} pages for "${query}"`);
@@ -227,10 +230,10 @@ class TMDBAPI {
         
         for (let currentPage = 2; currentPage <= totalPages; currentPage++) {
           // Add delay to avoid hitting API rate limits
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 100));
           
           try {
-            const pageUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${currentPage}&region=CA`;
+            const pageUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=${currentPage}&region=CA`;
             const pageResponse = await this.makeRequest(pageUrl);
             
             if (pageResponse.results && pageResponse.results.length > 0) {
@@ -245,73 +248,92 @@ class TMDBAPI {
 
       console.log(`Found ${allResults.length} total movies across ${totalPages} pages`);
 
-      if (allResults.length > 0) {
-        // Process all movies - but do it more efficiently
-        const moviesWithDetails = [];
-        
-        // Process in smaller batches to avoid overwhelming the API
-        const batchSize = 5;
-        for (let i = 0; i < allResults.length; i += batchSize) {
-          const batch = allResults.slice(i, i + batchSize);
-          
-          const batchResults = await Promise.all(
-            batch.map(async (movie: any) => {
-              try {
-                return await this.enrichMovieData(movie);
-              } catch (error) {
-                console.warn(`Failed to enrich movie ${movie.title}:`, error);
-                // Return basic movie data even if enrichment fails
-                return {
-                  id: movie.id,
-                  title: movie.title,
-                  poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
-                  runtime: undefined,
-                  release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
-                  genre_names: [],
-                  short_description: movie.overview || undefined,
-                  isStreamable: true, // Default to true for search results
-                  streaming_providers: [],
-                  vote_average: movie.vote_average,
-                  release_date: movie.release_date
-                };
-              }
-            })
-          );
-          
-          moviesWithDetails.push(...batchResults.filter(movie => movie !== null));
-          
-          // Add delay between batches
-          if (i + batchSize < allResults.length) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-          }
-        }
+      // TASK 2: REMOVE automatic enrichment to prevent rate-limiting
+      // Convert basic movie data without calling enrichMovieData
+      const basicMovies: TMDBMovie[] = allResults.map((movie: any) => ({
+        id: movie.id,
+        title: movie.title,
+        poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
+        runtime: undefined, // Will be loaded lazily
+        release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
+        genre_names: [], // Will be loaded lazily
+        short_description: movie.overview || undefined,
+        isStreamable: undefined, // Will be determined lazily
+        streaming_providers: [], // Will be loaded lazily
+        vote_average: movie.vote_average,
+        release_date: movie.release_date
+      }));
 
-        console.log(`Successfully processed ${moviesWithDetails.length} movies`);
+      // Sort by relevance (vote average and popularity)
+      const sortedMovies = basicMovies.sort((a, b) => {
+        // Prioritize movies with higher ratings
+        const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
+        const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
+        return scoreB - scoreA;
+      });
 
-        // CRITICAL: Filter to only show movies available on major streaming services
-        const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
+      console.log(`Returning ${sortedMovies.length} movies with basic info (streaming details will be loaded on demand)`);
 
-        // Sort by relevance (vote average and popularity)
-        const sortedMovies = validMovies.sort((a, b) => {
-          // Prioritize movies with higher ratings
-          const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
-          const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
-          return scoreB - scoreA;
-        });
-
-        console.log(`Returning ${sortedMovies.length} valid movies`);
-
-        return {
-          items: sortedMovies,
-          total_pages: totalPages,
-          page: 1
-        };
-      }
+      return {
+        items: sortedMovies,
+        total_pages: totalPages,
+        page: 1
+      };
     } catch (error) {
       console.error('TMDB search failed:', error);
     }
 
     return { items: [], total_pages: 1, page: 1 };
+  }
+
+  // NEW: Lazy loading function for individual movie details
+  async getMovieStreamingDetails(movieId: string): Promise<{ isStreamable: boolean; streaming_providers: string[]; runtime?: number; genre_names?: string[] } | null> {
+    try {
+      console.log(`Loading streaming details for movie ${movieId}...`);
+      
+      // Get detailed movie info
+      const detailUrl = `${TMDB_API_BASE}/movie/${movieId}?api_key=${TMDB_API_KEY}`;
+      const details = await this.makeRequest(detailUrl);
+      
+      // Get Canadian watch providers
+      const providersUrl = `${TMDB_API_BASE}/movie/${movieId}/watch/providers?api_key=${TMDB_API_KEY}`;
+      const providers = await this.makeRequest(providersUrl);
+      
+      const canadianProviders = providers.results?.CA;
+      let streamingProviders: string[] = [];
+      let isStreamable = false;
+      
+      if (canadianProviders) {
+        // ONLY get subscription (flatrate) providers - no rentals or purchases
+        const subscriptionProviders = canadianProviders.flatrate || [];
+        
+        // Filter to only major streaming services
+        const majorProviders = subscriptionProviders.filter((provider: any) =>
+          this.majorStreamingServices.some(majorService =>
+            provider.provider_name.toLowerCase().includes(majorService.toLowerCase())
+          )
+        );
+        
+        streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
+        isStreamable = streamingProviders.length > 0;
+        
+        console.log(`Movie ${movieId} streaming details:`, {
+          isStreamable,
+          streamingProviders,
+          runtime: details.runtime
+        });
+      }
+
+      return {
+        isStreamable,
+        streaming_providers: streamingProviders,
+        runtime: details.runtime,
+        genre_names: details.genres?.map((g: any) => g.name) || []
+      };
+    } catch (error) {
+      console.error(`Failed to get streaming details for movie ${movieId}:`, error);
+      return null;
+    }
   }
 
   async getMovieDetails(movieId: string): Promise<TMDBMovie | null> {
