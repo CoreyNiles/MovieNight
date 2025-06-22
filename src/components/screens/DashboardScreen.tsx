@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, Calendar, Play, Settings, Bell, Tv, MapPin } from 'lucide-react';
+import { Clock, Calendar, Play, Settings, Bell, Tv, MapPin, CheckCircle } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useAuth } from '../../hooks/useAuth';
@@ -16,11 +16,154 @@ export const DashboardScreen: React.FC = () => {
   const { dailyCycle } = useDailyCycle();
   const { config } = useAppConfig();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [remindersSet, setRemindersSet] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Check notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  // Automatically set reminders when dashboard loads
+  useEffect(() => {
+    if (dailyCycle?.winning_movie && !remindersSet) {
+      const today = dailyCycle.id;
+      const alarmFlag = `alarms_set_for_${today}`;
+      
+      // Check if alarms were already set today
+      const alarmsAlreadySet = localStorage.getItem(alarmFlag);
+      
+      if (!alarmsAlreadySet) {
+        setUpAutomaticReminders(today, alarmFlag);
+      } else {
+        setRemindersSet(true);
+      }
+    }
+  }, [dailyCycle?.winning_movie, remindersSet]);
+
+  const setUpAutomaticReminders = async (today: string, alarmFlag: string) => {
+    const schedule = calculateSchedule();
+    if (!schedule) return;
+
+    try {
+      // Request notification permission if not already granted
+      if ('Notification' in window && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+        
+        if (permission === 'denied') {
+          // Fallback to calendar event if notifications are denied
+          toast.error('Notifications denied. You can manually set calendar reminders below.');
+          return;
+        }
+      }
+
+      if (Notification.permission === 'granted') {
+        // Schedule all three reminders automatically
+        const reminders = [
+          {
+            time: addMinutes(schedule.startTime, -30),
+            title: 'Movie Night - 30 Minute Warning',
+            message: `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
+          },
+          {
+            time: addMinutes(schedule.startTime, -5),
+            title: 'Movie Night - 5 Minute Warning',
+            message: `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
+          },
+          {
+            time: schedule.startTime,
+            title: 'Movie Night - Show Time!',
+            message: `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
+          }
+        ];
+
+        let successCount = 0;
+        
+        reminders.forEach((reminder) => {
+          const timeUntilReminder = reminder.time.getTime() - Date.now();
+          
+          if (timeUntilReminder > 0) {
+            setTimeout(() => {
+              if (Notification.permission === 'granted') {
+                new Notification(reminder.title, {
+                  body: reminder.message,
+                  icon: '/movie-icon.svg',
+                  badge: '/movie-icon.svg',
+                  tag: `movie-reminder-${today}`,
+                  requireInteraction: true
+                });
+              }
+            }, timeUntilReminder);
+            
+            successCount++;
+          }
+        });
+
+        if (successCount > 0) {
+          // Mark alarms as set for today
+          localStorage.setItem(alarmFlag, 'true');
+          setRemindersSet(true);
+          
+          toast.success(`🔔 ${successCount} automatic reminders set for movie night!`, {
+            duration: 4000,
+            icon: '📱'
+          });
+        } else {
+          toast.error('All reminder times have already passed for today.');
+        }
+      } else {
+        toast.error('Notification permission is required for automatic reminders.');
+      }
+    } catch (error) {
+      console.error('Error setting up automatic reminders:', error);
+      toast.error('Failed to set up automatic reminders.');
+    }
+  };
+
+  const scheduleManualAlarm = (time: Date, title: string, message: string) => {
+    // For manual alarms, try notifications first, then fallback to calendar
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const timeUntilAlarm = time.getTime() - Date.now();
+      if (timeUntilAlarm > 0) {
+        setTimeout(() => {
+          new Notification(title, {
+            body: message,
+            icon: '/movie-icon.svg',
+            badge: '/movie-icon.svg',
+            requireInteraction: true
+          });
+        }, timeUntilAlarm);
+        toast.success(`📱 Notification set for ${format(time, 'h:mm a')}`);
+      } else {
+        toast.error('Cannot set reminder for past time');
+      }
+    } else {
+      // Fallback to calendar event
+      const calendarUrl = `data:text/calendar;charset=utf8,BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:${time.toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+SUMMARY:${title}
+DESCRIPTION:${message}
+END:VEVENT
+END:VCALENDAR`;
+      
+      const link = document.createElement('a');
+      link.href = calendarUrl;
+      link.download = 'movie-reminder.ics';
+      link.click();
+      
+      toast.success('📅 Calendar event downloaded');
+    }
+  };
 
   const calculateSchedule = () => {
     if (!dailyCycle?.winning_movie) return null;
@@ -75,49 +218,6 @@ export const DashboardScreen: React.FC = () => {
     };
   };
 
-  const scheduleAlarm = (time: Date, title: string, message: string) => {
-    // Try to use native device alarm APIs
-    if ('serviceWorker' in navigator && 'Notification' in window) {
-      // Request notification permission
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          const timeUntilAlarm = time.getTime() - Date.now();
-          if (timeUntilAlarm > 0) {
-            setTimeout(() => {
-              new Notification(title, {
-                body: message,
-                icon: '/movie-icon.svg',
-                badge: '/movie-icon.svg'
-              });
-            }, timeUntilAlarm);
-            toast.success(`Alarm set for ${format(time, 'h:mm a')}`);
-          } else {
-            toast.error('Cannot set alarm for past time');
-          }
-        } else {
-          toast.error('Notification permission denied');
-        }
-      });
-    } else {
-      // Fallback: try to open calendar app or show instructions
-      const calendarUrl = `data:text/calendar;charset=utf8,BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-DTSTART:${time.toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-SUMMARY:${title}
-DESCRIPTION:${message}
-END:VEVENT
-END:VCALENDAR`;
-      
-      const link = document.createElement('a');
-      link.href = calendarUrl;
-      link.download = 'movie-reminder.ics';
-      link.click();
-      
-      toast.success('Calendar event downloaded');
-    }
-  };
-
   const schedule = calculateSchedule();
 
   if (!dailyCycle?.winning_movie || !schedule) {
@@ -155,6 +255,23 @@ END:VCALENDAR`;
             <h1 className="text-4xl font-bold text-white mb-2">Tonight's Movie Night</h1>
             <p className="text-white/80">Everything you need to know about tonight's show</p>
           </motion.div>
+
+          {/* Automatic Reminders Status */}
+          {remindersSet && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 mb-6 text-center"
+            >
+              <div className="flex items-center justify-center space-x-2 text-green-300">
+                <CheckCircle className="h-5 w-5" />
+                <span className="font-semibold">📱 Automatic reminders are set!</span>
+              </div>
+              <p className="text-green-300/80 text-sm mt-1">
+                You'll receive phone notifications 30 minutes before, 5 minutes before, and at showtime
+              </p>
+            </motion.div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Movie Info */}
@@ -202,7 +319,6 @@ END:VCALENDAR`;
                         <MapPin className="h-4 w-4" />
                         <span>Available in Canada</span>
                       </div>
-                      {/* Note: Streaming providers would be displayed here if available in the data */}
                       <p className="text-white/70 text-sm">Check your favorite streaming service</p>
                     </div>
                   )}
@@ -279,19 +395,25 @@ END:VCALENDAR`;
                 </div>
               </div>
 
-              {/* Clickable Alarms */}
+              {/* Manual Reminders (Backup Option) */}
               <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
                 <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
                   <Bell className="h-5 w-5 mr-2" />
-                  Set Reminders
+                  Manual Reminders
                 </h3>
+                
+                {notificationPermission === 'denied' && (
+                  <div className="bg-yellow-500/20 text-yellow-300 px-3 py-2 rounded-lg text-sm mb-4">
+                    <strong>Note:</strong> Notifications are disabled. These will create calendar events instead.
+                  </div>
+                )}
                 
                 <div className="space-y-3">
                   <button
-                    onClick={() => scheduleAlarm(
+                    onClick={() => scheduleManualAlarm(
                       addMinutes(schedule.startTime, -30),
-                      'Movie Night',
-                      'The movie starts in 30 minutes!'
+                      'Movie Night - 30 Minute Warning',
+                      `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
                     )}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
                   >
@@ -300,10 +422,10 @@ END:VCALENDAR`;
                   </button>
                   
                   <button
-                    onClick={() => scheduleAlarm(
+                    onClick={() => scheduleManualAlarm(
                       addMinutes(schedule.startTime, -5),
-                      'Movie Night',
-                      'The movie is about to start!'
+                      'Movie Night - 5 Minute Warning',
+                      `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
                     )}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
                   >
@@ -312,10 +434,10 @@ END:VCALENDAR`;
                   </button>
                   
                   <button
-                    onClick={() => scheduleAlarm(
+                    onClick={() => scheduleManualAlarm(
                       schedule.startTime,
-                      'Movie Night',
-                      "It's time for the movie!"
+                      'Movie Night - Show Time!',
+                      `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
                     )}
                     className="w-full flex justify-between items-center bg-purple-500/30 hover:bg-purple-500/40 p-3 rounded-lg transition-colors text-white font-semibold"
                   >
@@ -325,7 +447,10 @@ END:VCALENDAR`;
                 </div>
                 
                 <p className="text-white/60 text-xs mt-3 text-center">
-                  Click any reminder to set an alarm on your device
+                  {notificationPermission === 'granted' 
+                    ? 'Click any reminder to set an additional notification'
+                    : 'Click any reminder to download a calendar event'
+                  }
                 </p>
               </div>
             </motion.div>
