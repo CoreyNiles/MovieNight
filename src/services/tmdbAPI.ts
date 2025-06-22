@@ -33,15 +33,15 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
-  // Whitelist of approved major streaming providers
-  private readonly majorStreamers = [
-    'Netflix',
-    'Amazon Prime Video', 
-    'Apple TV Plus',
-    'Apple TV+', // Alternative naming
-    'Tubi TV',
-    'Tubi', // Alternative naming
-    'Mubi'
+  // Keywords for flexible provider matching (instead of exact names)
+  private readonly majorStreamerKeywords = [
+    'netflix',
+    'prime video',
+    'apple tv',
+    'tubi',
+    'mubi',
+    'crave',
+    'disney plus'
   ];
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
@@ -75,7 +75,7 @@ class TMDBAPI {
       
       if (response.results && response.results.length > 0) {
         const moviesWithDetails = await Promise.all(
-          response.results.slice(0, CONSTANTS.TRENDING_MOVIES_LIMIT).map(async (movie: any) => {
+          response.results.map(async (movie: any) => {
             return await this.enrichMovieData(movie);
           })
         );
@@ -87,8 +87,11 @@ class TMDBAPI {
           movie.isStreamable === true
         );
 
+        // Sort by vote average (highest rated first)
+        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+
         return {
-          items: validMovies,
+          items: sortedMovies.slice(0, CONSTANTS.TRENDING_MOVIES_LIMIT),
           total_pages: 1,
           page: 1
         };
@@ -121,8 +124,11 @@ class TMDBAPI {
           movie.isStreamable === true
         );
 
+        // Sort by vote average (highest rated first)
+        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+
         return {
-          items: validMovies,
+          items: sortedMovies,
           total_pages: response.total_pages || 1,
           page: response.page || 1
         };
@@ -177,8 +183,11 @@ class TMDBAPI {
           movie.isStreamable === true
         );
 
+        // Sort by vote average (highest rated first)
+        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+
         return {
-          items: validMovies,
+          items: sortedMovies,
           total_pages: response.total_pages || 1,
           page: response.page || 1
         };
@@ -199,7 +208,7 @@ class TMDBAPI {
       
       if (tmdbResponse.results && tmdbResponse.results.length > 0) {
         const moviesWithDetails = await Promise.all(
-          tmdbResponse.results.slice(0, CONSTANTS.SEARCH_RESULTS_LIMIT).map(async (movie: any) => {
+          tmdbResponse.results.map(async (movie: any) => {
             return await this.enrichMovieData(movie);
           })
         );
@@ -211,8 +220,11 @@ class TMDBAPI {
           movie.isStreamable === true
         );
 
+        // Sort by vote average (highest rated first)
+        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+
         return {
-          items: validMovies,
+          items: sortedMovies,
           total_pages: tmdbResponse.total_pages || 1,
           page: tmdbResponse.page || 1
         };
@@ -266,20 +278,27 @@ class TMDBAPI {
       // CRITICAL CHANGE: Only consider flatrate (subscription) providers
       const flatrateProviders = canadianProviders?.flatrate || [];
       
-      // Check if any flatrate providers are in our major streamers whitelist
-      const isStreamableOnMajorService = flatrateProviders.some((provider: any) => 
-        this.majorStreamers.includes(provider.provider_name)
+      // IMPROVEMENT 1: Use flexible keyword matching instead of exact string matching
+      const isStreamableOnMajorService = flatrateProviders.some((provider: any) =>
+        this.majorStreamerKeywords.some(keyword =>
+          provider.provider_name.toLowerCase().includes(keyword)
+        )
       );
       
-      // Only get streaming provider names from flatrate providers that are major streamers
+      // Only get streaming provider names from flatrate providers that match our keywords
       const majorStreamingProviders = flatrateProviders
-        .filter((provider: any) => this.majorStreamers.includes(provider.provider_name))
+        .filter((provider: any) => 
+          this.majorStreamerKeywords.some(keyword =>
+            provider.provider_name.toLowerCase().includes(keyword)
+          )
+        )
         .map((provider: any) => provider.provider_name);
 
       console.log(`Movie: ${movie.title}`, {
         flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
         majorStreamingProviders,
-        isStreamableOnMajorService
+        isStreamableOnMajorService,
+        voteAverage: movie.vote_average
       });
 
       return {
@@ -290,8 +309,8 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: details.genres?.map((g: any) => g.name) || [],
         short_description: movie.overview || undefined,
-        isStreamable: isStreamableOnMajorService, // Renamed and using new logic
-        streaming_providers: majorStreamingProviders, // Only major streamers
+        isStreamable: isStreamableOnMajorService,
+        streaming_providers: majorStreamingProviders,
         vote_average: movie.vote_average,
         release_date: movie.release_date
       };
