@@ -289,19 +289,7 @@ class TMDBAPI {
         console.log(`Successfully processed ${moviesWithDetails.length} movies`);
 
         // CRITICAL: Filter to only show movies available on major streaming services
-        const validMovies = moviesWithDetails.filter(movie => 
-          movie && 
-          movie.title && 
-          movie.title.trim().length > 0 &&
-          movie.isStreamable === true &&
-          movie.streaming_providers && 
-          movie.streaming_providers.length > 0 &&
-          // Additional filter: must have runtime (filters out weird entries)
-          movie.runtime && 
-          movie.runtime > 60 && // At least 60 minutes
-          movie.release_year && 
-          movie.release_year > 1950 // Reasonable release year
-        );
+        const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         // Sort by relevance (vote average and popularity)
         const sortedMovies = validMovies.sort((a, b) => {
@@ -381,8 +369,7 @@ class TMDBAPI {
           // Filter to only major streaming services
           const majorProviders = subscriptionProviders.filter((provider: any) =>
             this.majorStreamingServices.some(majorService =>
-              provider.provider_name.toLowerCase().includes(majorService.toLowerCase()) ||
-              majorService.toLowerCase().includes(provider.provider_name.toLowerCase())
+              provider.provider_name.toLowerCase().includes(majorService.toLowerCase())
             )
           );
           
