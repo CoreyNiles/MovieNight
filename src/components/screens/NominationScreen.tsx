@@ -188,16 +188,6 @@ export const NominationScreen: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <StatusOverview />
 
-          {/* Nomination Header - Always visible */}
-          <NominationHeader
-            selectedMovies={selectedMovies}
-            maxSelections={CONSTANTS.MAX_NOMINATIONS_PER_USER}
-            onSubmit={handleSubmitNominations}
-            onNoNominations={handleNoNominations}
-            loading={loading}
-            hasSubmitted={hasSubmitted}
-          />
-
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -216,6 +206,18 @@ export const NominationScreen: React.FC = () => {
 
           {!hasSubmitted ? (
             <>
+              {/* Nomination Header */}
+              <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl p-4 mb-6 sticky top-[80px] z-30">
+                <NominationHeader
+                  selectedMovies={selectedMovies}
+                  maxSelections={CONSTANTS.MAX_NOMINATIONS_PER_USER}
+                  onSubmit={handleSubmitNominations}
+                  onNoNominations={handleNoNominations}
+                  loading={loading}
+                  hasSubmitted={hasSubmitted}
+                />
+              </div>
+
               {/* Search and Controls */}
               <div className="flex justify-between items-center mb-6">
                 <div className="flex space-x-4">

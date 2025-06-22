@@ -211,16 +211,6 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <div className="p-4">
         <div className="max-w-7xl mx-auto">
-          {/* Nomination Header - Always visible */}
-          <NominationHeader
-            selectedMovies={selectedMovies}
-            maxSelections={maxSelections}
-            onSubmit={handleSubmitNominations}
-            onNoNominations={handleNoNominations}
-            loading={isSubmitting}
-            hasSubmitted={hasSubmitted}
-          />
-
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center space-x-4">
@@ -243,6 +233,18 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
             <div className="text-white/70">
               {selectedMovies.length}/{maxSelections} selected
             </div>
+          </div>
+
+          {/* Nomination Header - After the main header */}
+          <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl p-4 mb-6 sticky top-[80px] z-30">
+            <NominationHeader
+              selectedMovies={selectedMovies}
+              maxSelections={maxSelections}
+              onSubmit={handleSubmitNominations}
+              onNoNominations={handleNoNominations}
+              loading={isSubmitting}
+              hasSubmitted={hasSubmitted}
+            />
           </div>
 
           {/* Netflix-style carousels */}
