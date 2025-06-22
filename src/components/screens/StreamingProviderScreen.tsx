@@ -4,6 +4,10 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Check, Star, Calendar, Clock, Tv } from 'lucide-react';
 import { tmdbAPI, TMDBMovie, FilterOptions } from '../../services/tmdbAPI';
 import { MovieCarousel } from '../common/MovieCarousel';
+import { NominationHeader } from '../common/NominationHeader';
+import { useSharedMovies } from '../../hooks/useSharedMovies';
+import { useDailyCycle } from '../../hooks/useDailyCycle';
+import { useAuth } from '../../hooks/useAuth';
 import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
@@ -20,6 +24,9 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
 }) => {
   const { providerId } = useParams<{ providerId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { shareMovie } = useSharedMovies();
+  const { dailyCycle, submitNominations } = useDailyCycle();
   
   const [trendingMovies, setTrendingMovies] = useState<TMDBMovie[]>([]);
   const [genreMovies, setGenreMovies] = useState<Record<string, TMDBMovie[]>>({});
@@ -28,6 +35,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
   
   const [filters, setFilters] = useState<FilterOptions>({
     decade: undefined,
@@ -37,6 +45,8 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   });
 
   const provider = CONSTANTS.STREAMING_PROVIDERS.find(p => p.id.toString() === providerId);
+
+  const hasSubmitted = user && dailyCycle ? user.id in dailyCycle.nominations : false;
 
   useEffect(() => {
     if (providerId) {
@@ -122,6 +132,65 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     }
   };
 
+  const handleSubmitNominations = async () => {
+    if (!user || !dailyCycle) return;
+    
+    try {
+      setLoading(true);
+      
+      // Create temporary movie objects for sharing
+      const allMovies = [
+        ...trendingMovies,
+        ...Object.values(genreMovies).flat(),
+        ...filteredMovies
+      ];
+      
+      // Share selected movies to the shared pool
+      for (const movieId of selectedMovies) {
+        const movie = allMovies.find(m => m.id.toString() === movieId);
+        if (movie) {
+          // Convert TMDBMovie to Movie format for sharing
+          const movieForSharing = {
+            id: movieId,
+            title: movie.title,
+            justwatch_id: movieId,
+            poster_url: movie.poster || CONSTANTS.FALLBACK_POSTER_URL,
+            runtime: movie.runtime || 120,
+            release_year: movie.release_year || new Date().getFullYear(),
+            genre_names: movie.genre_names || [],
+            short_description: movie.short_description || '',
+            nomination_streak: 0,
+            added_at: new Date()
+          };
+          
+          await shareMovie(movieForSharing, user.id);
+        }
+      }
+      
+      // Submit nominations
+      await submitNominations(user.id, selectedMovies);
+      toast.success('Nominations submitted!');
+    } catch (error) {
+      toast.error('Failed to submit nominations');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNoNominations = async () => {
+    if (!user || !dailyCycle) return;
+    
+    try {
+      setLoading(true);
+      await submitNominations(user.id, []);
+      toast.success('Noted - no nominations from you tonight');
+    } catch (error) {
+      toast.error('Failed to submit');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!provider) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
@@ -142,6 +211,16 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <div className="p-4">
         <div className="max-w-7xl mx-auto">
+          {/* Nomination Header - Always visible */}
+          <NominationHeader
+            selectedMovies={selectedMovies}
+            maxSelections={maxSelections}
+            onSubmit={handleSubmitNominations}
+            onNoNominations={handleNoNominations}
+            loading={loading}
+            hasSubmitted={hasSubmitted}
+          />
+
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center space-x-4">

@@ -213,15 +213,68 @@ class TMDBAPI {
     try {
       console.log('Searching for movies:', query);
       
-      const tmdbUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&region=CA`;
-      const tmdbResponse = await this.makeRequest(tmdbUrl);
+      // First, get the initial page to determine total pages
+      const initialUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1&region=CA`;
+      const initialResponse = await this.makeRequest(initialUrl);
       
-      if (tmdbResponse.results && tmdbResponse.results.length > 0) {
-        const moviesWithDetails = await Promise.all(
-          tmdbResponse.results.map(async (movie: any) => {
-            return await this.enrichMovieData(movie);
-          })
-        );
+      if (!initialResponse.results || initialResponse.results.length === 0) {
+        return { items: [], total_pages: 1, page: 1 };
+      }
+
+      const totalPages = Math.min(initialResponse.total_pages || 1, 10); // Limit to 10 pages to avoid excessive API calls
+      let allResults = [...initialResponse.results];
+
+      // Fetch additional pages if available
+      if (totalPages > 1) {
+        console.log(`Fetching ${totalPages} pages of search results...`);
+        
+        for (let currentPage = 2; currentPage <= totalPages; currentPage++) {
+          // Add delay to avoid hitting API rate limits
+          await new Promise(resolve => setTimeout(resolve, 250));
+          
+          try {
+            const pageUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${currentPage}&region=CA`;
+            const pageResponse = await this.makeRequest(pageUrl);
+            
+            if (pageResponse.results && pageResponse.results.length > 0) {
+              allResults = [...allResults, ...pageResponse.results];
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch page ${currentPage}:`, error);
+            // Continue with other pages even if one fails
+          }
+        }
+      }
+
+      console.log(`Found ${allResults.length} total movies across ${totalPages} pages`);
+
+      if (allResults.length > 0) {
+        // Process all movies with streaming data
+        const moviesWithDetails = [];
+        
+        // Process in batches to avoid overwhelming the API
+        const batchSize = 10;
+        for (let i = 0; i < allResults.length; i += batchSize) {
+          const batch = allResults.slice(i, i + batchSize);
+          
+          const batchResults = await Promise.all(
+            batch.map(async (movie: any) => {
+              try {
+                return await this.enrichMovieData(movie);
+              } catch (error) {
+                console.warn(`Failed to enrich movie ${movie.title}:`, error);
+                return null;
+              }
+            })
+          );
+          
+          moviesWithDetails.push(...batchResults.filter(movie => movie !== null));
+          
+          // Add delay between batches
+          if (i + batchSize < allResults.length) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
 
         // Filter out movies that aren't streamable on major services
         const validMovies = moviesWithDetails.filter(movie => 
@@ -235,8 +288,8 @@ class TMDBAPI {
 
         return {
           items: sortedMovies,
-          total_pages: tmdbResponse.total_pages || 1,
-          page: tmdbResponse.page || 1
+          total_pages: totalPages,
+          page: 1
         };
       }
     } catch (error) {

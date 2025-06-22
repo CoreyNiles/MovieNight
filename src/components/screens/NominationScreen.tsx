@@ -8,6 +8,7 @@ import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
+import { NominationHeader } from '../common/NominationHeader';
 import { StatusOverview } from '../common/StatusOverview';
 import { MovieCarousel } from '../common/MovieCarousel';
 import { CONSTANTS } from '../../constants';
@@ -187,6 +188,16 @@ export const NominationScreen: React.FC = () => {
         <div className="max-w-7xl mx-auto">
           <StatusOverview />
 
+          {/* Nomination Header - Always visible */}
+          <NominationHeader
+            selectedMovies={selectedMovies}
+            maxSelections={CONSTANTS.MAX_NOMINATIONS_PER_USER}
+            onSubmit={handleSubmitNominations}
+            onNoNominations={handleNoNominations}
+            loading={loading}
+            hasSubmitted={hasSubmitted}
+          />
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -363,27 +374,7 @@ export const NominationScreen: React.FC = () => {
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex justify-center space-x-4">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSubmitNominations}
-                  disabled={loading || selectedMovies.length === 0}
-                  className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-8 py-3 rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Submitting...' : `Submit Nominations (${selectedMovies.length})`}
-                </motion.button>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleNoNominations}
-                  disabled={loading}
-                  className="bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-lg font-semibold border border-white/20 transition-all duration-200"
-                >
-                  {loading ? 'Submitting...' : 'No Nominations'}
-                </motion.button>
-              </div>
+              {/* Submit buttons are now in the sticky header */}
             </>
           ) : (
             <motion.div
