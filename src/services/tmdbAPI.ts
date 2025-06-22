@@ -33,19 +33,16 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
-  // Define major streaming services we want to prioritize
-  private readonly majorStreamingServices = [
-    'Netflix',
-    'Amazon Prime Video', 
-    'Apple TV Plus',
-    'Apple TV',
-    'Disney Plus',
-    'Disney+',
-    'HBO Max',
-    'Crave',
-    'Paramount Plus',
-    'Paramount+',
-    'Hulu'
+  // TASK 1: Fix case-insensitive search and simplify provider keywords
+  private readonly majorStreamerKeywords = [
+    'netflix', 
+    'prime video', 
+    'apple tv', 
+    'disney', 
+    'crave', 
+    'mubi', 
+    'tubi', 
+    'paramount'
   ];
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
@@ -85,13 +82,7 @@ class TMDBAPI {
         );
 
         // Filter for movies with streaming availability
-        const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && 
-          movie.title.trim().length > 0 &&
-          movie.isStreamable === true &&
-          movie.streaming_providers && 
-          movie.streaming_providers.length > 0
-        );
+        const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         // Sort by popularity
         const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
@@ -124,13 +115,7 @@ class TMDBAPI {
         );
 
         // Filter for movies with streaming availability
-        const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && 
-          movie.title.trim().length > 0 &&
-          movie.isStreamable === true &&
-          movie.streaming_providers && 
-          movie.streaming_providers.length > 0
-        );
+        const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
           items: validMovies,
@@ -182,13 +167,7 @@ class TMDBAPI {
         );
 
         // Filter for movies with streaming availability
-        const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && 
-          movie.title.trim().length > 0 &&
-          movie.isStreamable === true &&
-          movie.streaming_providers && 
-          movie.streaming_providers.length > 0
-        );
+        const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
           items: validMovies,
@@ -248,8 +227,7 @@ class TMDBAPI {
 
       console.log(`Found ${allResults.length} total movies across ${totalPages} pages`);
 
-      // TASK 2: REMOVE automatic enrichment to prevent rate-limiting
-      // Convert basic movie data without calling enrichMovieData
+      // Convert basic movie data without calling enrichMovieData to prevent rate-limiting
       const basicMovies: TMDBMovie[] = allResults.map((movie: any) => ({
         id: movie.id,
         title: movie.title,
@@ -264,15 +242,33 @@ class TMDBAPI {
         release_date: movie.release_date
       }));
 
-      // Sort by relevance (vote average and popularity)
+      // TASK 2: Implement smart sorting for search relevance
       const sortedMovies = basicMovies.sort((a, b) => {
-        // Prioritize movies with higher ratings
+        const queryLower = query.toLowerCase();
+        const titleA = a.title.toLowerCase();
+        const titleB = b.title.toLowerCase();
+        
+        // Highest Priority: Exact match (case-insensitive)
+        const exactMatchA = titleA === queryLower;
+        const exactMatchB = titleB === queryLower;
+        
+        if (exactMatchA && !exactMatchB) return -1;
+        if (!exactMatchA && exactMatchB) return 1;
+        
+        // Second Priority: Title contains the search query
+        const containsA = titleA.includes(queryLower);
+        const containsB = titleB.includes(queryLower);
+        
+        if (containsA && !containsB) return -1;
+        if (!containsA && containsB) return 1;
+        
+        // Final Sorting: By vote average and popularity
         const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
         const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
         return scoreB - scoreA;
       });
 
-      console.log(`Returning ${sortedMovies.length} movies with basic info (streaming details will be loaded on demand)`);
+      console.log(`Returning ${sortedMovies.length} movies with smart relevance sorting (streaming details will be loaded on demand)`);
 
       return {
         items: sortedMovies,
@@ -286,7 +282,7 @@ class TMDBAPI {
     return { items: [], total_pages: 1, page: 1 };
   }
 
-  // NEW: Lazy loading function for individual movie details
+  // Lazy loading function for individual movie details
   async getMovieStreamingDetails(movieId: string): Promise<{ isStreamable: boolean; streaming_providers: string[]; runtime?: number; genre_names?: string[] } | null> {
     try {
       console.log(`Loading streaming details for movie ${movieId}...`);
@@ -305,12 +301,12 @@ class TMDBAPI {
       
       if (canadianProviders) {
         // ONLY get subscription (flatrate) providers - no rentals or purchases
-        const subscriptionProviders = canadianProviders.flatrate || [];
+        const flatrateProviders = canadianProviders.flatrate || [];
         
-        // Filter to only major streaming services
-        const majorProviders = subscriptionProviders.filter((provider: any) =>
-          this.majorStreamingServices.some(majorService =>
-            provider.provider_name.toLowerCase().includes(majorService.toLowerCase())
+        // TASK 1: Fix the provider check - simplified filter logic
+        const majorProviders = flatrateProviders.filter((provider: any) =>
+          this.majorStreamerKeywords.some(keyword =>
+            provider.provider_name.toLowerCase().includes(keyword)
           )
         );
         
@@ -318,6 +314,8 @@ class TMDBAPI {
         isStreamable = streamingProviders.length > 0;
         
         console.log(`Movie ${movieId} streaming details:`, {
+          flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
+          majorProviders: majorProviders.map((p: any) => p.provider_name),
           isStreamable,
           streamingProviders,
           runtime: details.runtime
@@ -386,12 +384,12 @@ class TMDBAPI {
         
         if (canadianProviders) {
           // ONLY get subscription (flatrate) providers - no rentals or purchases
-          const subscriptionProviders = canadianProviders.flatrate || [];
+          const flatrateProviders = canadianProviders.flatrate || [];
           
-          // Filter to only major streaming services
-          const majorProviders = subscriptionProviders.filter((provider: any) =>
-            this.majorStreamingServices.some(majorService =>
-              provider.provider_name.toLowerCase().includes(majorService.toLowerCase())
+          // TASK 1: Fix the provider check - simplified filter logic
+          const majorProviders = flatrateProviders.filter((provider: any) =>
+            this.majorStreamerKeywords.some(keyword =>
+              provider.provider_name.toLowerCase().includes(keyword)
             )
           );
           
@@ -399,7 +397,7 @@ class TMDBAPI {
           isStreamable = streamingProviders.length > 0;
           
           console.log(`Movie: ${movie.title}`, {
-            allSubscriptionProviders: subscriptionProviders.map((p: any) => p.provider_name),
+            flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
             majorProviders: majorProviders.map((p: any) => p.provider_name),
             finalStreamingProviders: streamingProviders,
             isStreamable
