@@ -189,62 +189,44 @@ class TMDBAPI {
       // TASK 1: Fix case-insensitive search - convert query to lowercase
       const lowerCaseQuery = query.toLowerCase();
       
-      // First, get the initial page to determine total pages
-      const initialUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=1&region=CA`;
-      const initialResponse = await this.makeRequest(initialUrl);
-      
-      if (!initialResponse.results || initialResponse.results.length === 0) {
+      // Get search results from first few pages to ensure we find the right movie
+      const maxPages = 3; // Reduced to avoid rate limiting but still comprehensive
+      let allResults: any[] = [];
+
+      for (let currentPage = 1; currentPage <= maxPages; currentPage++) {
+        try {
+          const searchUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=${currentPage}&region=CA`;
+          const response = await this.makeRequest(searchUrl);
+          
+          if (response.results && response.results.length > 0) {
+            allResults = [...allResults, ...response.results];
+          }
+          
+          // If we got fewer results than expected, we've reached the end
+          if (!response.results || response.results.length < 20) {
+            break;
+          }
+          
+          // Small delay to avoid rate limiting
+          if (currentPage < maxPages) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch search page ${currentPage}:`, error);
+          break;
+        }
+      }
+
+      if (allResults.length === 0) {
         console.log('No results found for query:', query);
         return { items: [], total_pages: 1, page: 1 };
       }
 
-      const totalPages = Math.min(initialResponse.total_pages || 1, 20); // Get comprehensive results
-      let allResults = [...initialResponse.results];
+      console.log(`Found ${allResults.length} total movies for "${query}"`);
 
-      console.log(`Found ${initialResponse.total_results} total results across ${totalPages} pages for "${query}"`);
-
-      // Fetch additional pages if available
-      if (totalPages > 1) {
-        console.log(`Fetching ${totalPages} pages of search results...`);
-        
-        for (let currentPage = 2; currentPage <= totalPages; currentPage++) {
-          // Add delay to avoid hitting API rate limits
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          try {
-            const pageUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=${currentPage}&region=CA`;
-            const pageResponse = await this.makeRequest(pageUrl);
-            
-            if (pageResponse.results && pageResponse.results.length > 0) {
-              allResults = [...allResults, ...pageResponse.results];
-            }
-          } catch (error) {
-            console.warn(`Failed to fetch page ${currentPage}:`, error);
-            // Continue with other pages even if one fails
-          }
-        }
-      }
-
-      console.log(`Found ${allResults.length} total movies across ${totalPages} pages`);
-
-      // Convert basic movie data without calling enrichMovieData to prevent rate-limiting
-      const basicMovies: TMDBMovie[] = allResults.map((movie: any) => ({
-        id: movie.id,
-        title: movie.title,
-        poster: movie.poster_path ? `${CONSTANTS.TMDB_IMAGE_BASE_URL}${movie.poster_path}` : undefined,
-        runtime: undefined, // Will be loaded lazily
-        release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
-        genre_names: [], // Will be loaded lazily
-        short_description: movie.overview || undefined,
-        isStreamable: undefined, // Will be determined lazily
-        streaming_providers: [], // Will be loaded lazily
-        vote_average: movie.vote_average,
-        release_date: movie.release_date
-      }));
-
-      // TASK 2: Implement smart sorting for search relevance
-      const sortedMovies = basicMovies.sort((a, b) => {
-        const queryLower = query.toLowerCase();
+      // TASK 2: Implement smart sorting for search relevance BEFORE enriching data
+      const sortedResults = allResults.sort((a, b) => {
+        const queryLower = lowerCaseQuery;
         const titleA = a.title.toLowerCase();
         const titleB = b.title.toLowerCase();
         
@@ -263,16 +245,35 @@ class TMDBAPI {
         if (!containsA && containsB) return 1;
         
         // Final Sorting: By vote average and popularity
-        const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
-        const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
+        const scoreA = (a.vote_average || 0) * 10 + (a.release_year ? new Date(a.release_date).getFullYear() : 0) / 1000;
+        const scoreB = (b.vote_average || 0) * 10 + (b.release_year ? new Date(b.release_date).getFullYear() : 0) / 1000;
         return scoreB - scoreA;
       });
 
-      console.log(`Returning ${sortedMovies.length} movies with smart relevance sorting (streaming details will be loaded on demand)`);
+      // Take top 50 most relevant results to enrich (this prevents rate limiting)
+      const topResults = sortedResults.slice(0, 50);
+
+      console.log(`Enriching top ${topResults.length} most relevant results...`);
+
+      // Enrich the top results with streaming data
+      const moviesWithDetails = await Promise.all(
+        topResults.map(async (movie: any, index: number) => {
+          // Add small delays between requests to avoid rate limiting
+          if (index > 0 && index % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          return await this.enrichMovieData(movie);
+        })
+      );
+
+      // Filter for movies with streaming availability
+      const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
+
+      console.log(`Returning ${validMovies.length} streamable movies out of ${topResults.length} checked`);
 
       return {
-        items: sortedMovies,
-        total_pages: totalPages,
+        items: validMovies,
+        total_pages: 1,
         page: 1
       };
     } catch (error) {
