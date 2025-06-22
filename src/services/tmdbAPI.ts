@@ -33,7 +33,9 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
-  // TASK 1: Fix case-insensitive search and simplify provider keywords
+  // Major streaming provider IDs for Canada
+  private readonly majorProviderIds = [8, 119, 350, 337, 384, 230]; // Netflix, Prime, Apple TV+, Disney+, HBO Max, Crave
+  
   private readonly majorStreamerKeywords = [
     'netflix', 
     'prime video', 
@@ -69,26 +71,24 @@ class TMDBAPI {
 
   async getTrendingMovies(): Promise<TMDBSearchResponse> {
     try {
-      console.log('Fetching trending movies...');
+      console.log('Fetching trending movies from major streaming platforms...');
       
-      const trendingUrl = `${TMDB_API_BASE}/trending/movie/week?api_key=${TMDB_API_KEY}&region=CA`;
-      const response = await this.makeRequest(trendingUrl);
+      // Use discover endpoint with major streaming providers
+      const discoverUrl = `${TMDB_API_BASE}/discover/movie?api_key=${TMDB_API_KEY}&with_watch_providers=${this.majorProviderIds.join(',')}&watch_region=CA&sort_by=popularity.desc&page=1`;
+      const response = await this.makeRequest(discoverUrl);
       
       if (response.results && response.results.length > 0) {
         const moviesWithDetails = await Promise.all(
-          response.results.map(async (movie: any) => {
+          response.results.slice(0, CONSTANTS.TRENDING_MOVIES_LIMIT).map(async (movie: any) => {
             return await this.enrichMovieData(movie);
           })
         );
 
-        // Filter for movies with streaming availability
+        // All should be streamable since we filtered by providers, but double-check
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
-        // Sort by popularity
-        const sortedMovies = validMovies.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-
         return {
-          items: sortedMovies.slice(0, CONSTANTS.TRENDING_MOVIES_LIMIT),
+          items: validMovies,
           total_pages: 1,
           page: 1
         };
@@ -102,10 +102,11 @@ class TMDBAPI {
 
   async getMoviesByGenre(genreId: number, page: number = 1): Promise<TMDBSearchResponse> {
     try {
-      console.log(`Fetching movies for genre ${genreId}...`);
+      console.log(`Fetching movies for genre ${genreId} from major streaming platforms...`);
       
-      const genreUrl = `${TMDB_API_BASE}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&region=CA&page=${page}&sort_by=popularity.desc`;
-      const response = await this.makeRequest(genreUrl);
+      // Use discover endpoint with major streaming providers and genre
+      const discoverUrl = `${TMDB_API_BASE}/discover/movie?api_key=${TMDB_API_KEY}&with_genres=${genreId}&with_watch_providers=${this.majorProviderIds.join(',')}&watch_region=CA&page=${page}&sort_by=popularity.desc`;
+      const response = await this.makeRequest(discoverUrl);
       
       if (response.results && response.results.length > 0) {
         const moviesWithDetails = await Promise.all(
@@ -114,7 +115,7 @@ class TMDBAPI {
           })
         );
 
-        // Filter for movies with streaming availability
+        // All should be streamable since we filtered by providers
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
@@ -166,7 +167,7 @@ class TMDBAPI {
           })
         );
 
-        // Filter for movies with streaming availability
+        // All should be streamable since we filtered by provider
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
@@ -184,49 +185,47 @@ class TMDBAPI {
 
   async searchMovies(query: string, page: number = 1): Promise<TMDBSearchResponse> {
     try {
-      console.log('Searching for movies:', query);
+      console.log('Searching for movies on major streaming platforms:', query);
       
-      // TASK 1: Fix case-insensitive search - convert query to lowercase
-      const lowerCaseQuery = query.toLowerCase();
+      // STEP 1: Search across ALL major streaming platforms using discover endpoint
+      // This ensures we ONLY get movies that are available on our target platforms
+      const allStreamingResults: any[] = [];
       
-      // Get search results from first few pages to ensure we find the right movie
-      const maxPages = 3; // Reduced to avoid rate limiting but still comprehensive
-      let allResults: any[] = [];
-
-      for (let currentPage = 1; currentPage <= maxPages; currentPage++) {
+      for (const providerId of this.majorProviderIds) {
         try {
-          const searchUrl = `${TMDB_API_BASE}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(lowerCaseQuery)}&page=${currentPage}&region=CA`;
-          const response = await this.makeRequest(searchUrl);
+          // Search within each major streaming platform
+          const discoverUrl = `${TMDB_API_BASE}/discover/movie?api_key=${TMDB_API_KEY}&with_watch_providers=${providerId}&watch_region=CA&sort_by=popularity.desc&page=1`;
+          const response = await this.makeRequest(discoverUrl);
           
           if (response.results && response.results.length > 0) {
-            allResults = [...allResults, ...response.results];
-          }
-          
-          // If we got fewer results than expected, we've reached the end
-          if (!response.results || response.results.length < 20) {
-            break;
+            allStreamingResults.push(...response.results);
           }
           
           // Small delay to avoid rate limiting
-          if (currentPage < maxPages) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
-          console.warn(`Failed to fetch search page ${currentPage}:`, error);
-          break;
+          console.warn(`Failed to fetch from provider ${providerId}:`, error);
+          continue;
         }
       }
-
-      if (allResults.length === 0) {
-        console.log('No results found for query:', query);
+      
+      console.log(`Found ${allStreamingResults.length} total movies across all major streaming platforms`);
+      
+      if (allStreamingResults.length === 0) {
         return { items: [], total_pages: 1, page: 1 };
       }
-
-      console.log(`Found ${allResults.length} total movies for "${query}"`);
-
-      // TASK 2: Implement smart sorting for search relevance BEFORE enriching data
-      const sortedResults = allResults.sort((a, b) => {
-        const queryLower = lowerCaseQuery;
+      
+      // STEP 2: Filter by search query and implement smart sorting
+      const queryLower = query.toLowerCase();
+      
+      const matchingMovies = allStreamingResults.filter(movie => 
+        movie.title && movie.title.toLowerCase().includes(queryLower)
+      );
+      
+      console.log(`Found ${matchingMovies.length} movies matching "${query}" on streaming platforms`);
+      
+      // STEP 3: Smart sorting for search relevance
+      const sortedResults = matchingMovies.sort((a, b) => {
         const titleA = a.title.toLowerCase();
         const titleB = b.title.toLowerCase();
         
@@ -237,39 +236,38 @@ class TMDBAPI {
         if (exactMatchA && !exactMatchB) return -1;
         if (!exactMatchA && exactMatchB) return 1;
         
-        // Second Priority: Title contains the search query
-        const containsA = titleA.includes(queryLower);
-        const containsB = titleB.includes(queryLower);
+        // Second Priority: Title starts with the search query
+        const startsWithA = titleA.startsWith(queryLower);
+        const startsWithB = titleB.startsWith(queryLower);
         
-        if (containsA && !containsB) return -1;
-        if (!containsA && containsB) return 1;
+        if (startsWithA && !startsWithB) return -1;
+        if (!startsWithA && startsWithB) return 1;
         
         // Final Sorting: By vote average and popularity
-        const scoreA = (a.vote_average || 0) * 10 + (a.release_year ? new Date(a.release_date).getFullYear() : 0) / 1000;
-        const scoreB = (b.vote_average || 0) * 10 + (b.release_year ? new Date(b.release_date).getFullYear() : 0) / 1000;
+        const scoreA = (a.vote_average || 0) * 10 + (a.popularity || 0) / 1000;
+        const scoreB = (b.vote_average || 0) * 10 + (b.popularity || 0) / 1000;
         return scoreB - scoreA;
       });
 
-      // Take top 50 most relevant results to enrich (this prevents rate limiting)
-      const topResults = sortedResults.slice(0, 50);
-
+      // STEP 4: Take top results and enrich with detailed streaming data
+      const topResults = sortedResults.slice(0, 20); // Reasonable limit
+      
       console.log(`Enriching top ${topResults.length} most relevant results...`);
 
-      // Enrich the top results with streaming data
       const moviesWithDetails = await Promise.all(
         topResults.map(async (movie: any, index: number) => {
           // Add small delays between requests to avoid rate limiting
-          if (index > 0 && index % 10 === 0) {
+          if (index > 0 && index % 5 === 0) {
             await new Promise(resolve => setTimeout(resolve, 200));
           }
           return await this.enrichMovieData(movie);
         })
       );
 
-      // Filter for movies with streaming availability
+      // Since we pre-filtered by streaming platforms, most should be streamable
       const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
-      console.log(`Returning ${validMovies.length} streamable movies out of ${topResults.length} checked`);
+      console.log(`Returning ${validMovies.length} confirmed streamable movies`);
 
       return {
         items: validMovies,
@@ -304,7 +302,7 @@ class TMDBAPI {
         // ONLY get subscription (flatrate) providers - no rentals or purchases
         const flatrateProviders = canadianProviders.flatrate || [];
         
-        // TASK 1: Fix the provider check - simplified filter logic
+        // Simple filter logic for major providers
         const majorProviders = flatrateProviders.filter((provider: any) =>
           this.majorStreamerKeywords.some(keyword =>
             provider.provider_name.toLowerCase().includes(keyword)
@@ -376,7 +374,7 @@ class TMDBAPI {
       // Get Canadian watch providers
       let canadianProviders = null;
       let streamingProviders: string[] = [];
-      let isStreamable = false; // Default to false - must prove availability
+      let isStreamable = false;
       
       try {
         const providersUrl = `${TMDB_API_BASE}/movie/${movie.id}/watch/providers?api_key=${TMDB_API_KEY}`;
@@ -387,7 +385,7 @@ class TMDBAPI {
           // ONLY get subscription (flatrate) providers - no rentals or purchases
           const flatrateProviders = canadianProviders.flatrate || [];
           
-          // TASK 1: Fix the provider check - simplified filter logic
+          // Simple filter logic for major providers
           const majorProviders = flatrateProviders.filter((provider: any) =>
             this.majorStreamerKeywords.some(keyword =>
               provider.provider_name.toLowerCase().includes(keyword)
