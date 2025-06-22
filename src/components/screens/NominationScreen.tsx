@@ -9,6 +9,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
 import { NominationHeader } from '../common/NominationHeader';
+import { LazyMovieCard } from '../common/LazyMovieCard';
 import { StatusOverview } from '../common/StatusOverview';
 import { MovieCarousel } from '../common/MovieCarousel';
 import { CONSTANTS } from '../../constants';
@@ -289,44 +290,13 @@ export const NominationScreen: React.FC = () => {
                           const isSelected = selectedMovies.includes(movieId);
                           
                           return (
-                            <motion.div
+                            <LazyMovieCard
                               key={movie.id}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => handleMovieSelect(movieId)}
-                              className={`relative bg-white/10 backdrop-blur-lg rounded-xl overflow-hidden cursor-pointer transition-all duration-200 ${
-                                isSelected
-                                  ? 'ring-4 ring-purple-500 shadow-lg shadow-purple-500/25'
-                                  : 'hover:bg-white/20'
-                              }`}
-                            >
-                              <img
-                                src={movie.poster || CONSTANTS.FALLBACK_POSTER_URL}
-                                alt={movie.title}
-                                className="w-full h-60 object-cover"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
-                                }}
-                              />
-                              <div className="p-3">
-                                <h4 className="text-white font-semibold text-sm mb-1 line-clamp-2">{movie.title}</h4>
-                                <div className="flex items-center justify-between text-white/70 text-xs">
-                                  <span>{movie.release_year}</span>
-                                  {movie.runtime && <span>{movie.runtime}m</span>}
-                                </div>
-                                {movie.streaming_providers && movie.streaming_providers.length > 0 && (
-                                  <div className="mt-1 text-green-400 text-xs">
-                                    {movie.streaming_providers.slice(0, 1).join(', ')}
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {isSelected && (
-                                <div className="absolute top-2 right-2 bg-purple-500 text-white p-1 rounded-full">
-                                  <Check className="h-3 w-3" />
-                                </div>
-                              )}
-                            </motion.div>
+                              movie={movie}
+                              isSelected={isSelected}
+                              onSelect={handleMovieSelect}
+                              className="w-full h-auto"
+                            />
                           );
                         })}
                       </div>
