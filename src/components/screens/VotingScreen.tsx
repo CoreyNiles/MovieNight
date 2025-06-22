@@ -75,7 +75,7 @@ export const VotingScreen: React.FC = () => {
 
   if (hasVoted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
         <NavigationHeader currentScreen="GATHERING_VOTES" />
         
         <div className="flex items-center justify-center p-4" style={{ minHeight: 'calc(100vh - 80px)' }}>
@@ -145,7 +145,7 @@ export const VotingScreen: React.FC = () => {
   // Show message if no movies were nominated
   if (nominatedMovies.length === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
         <NavigationHeader currentScreen="GATHERING_VOTES" />
         
         <div className="flex items-center justify-center p-4" style={{ minHeight: 'calc(100vh - 80px)' }}>
@@ -167,7 +167,7 @@ export const VotingScreen: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <NavigationHeader currentScreen="GATHERING_VOTES" />
       
       <div className="p-4">

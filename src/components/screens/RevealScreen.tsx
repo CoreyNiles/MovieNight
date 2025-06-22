@@ -118,7 +118,7 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black relative overflow-hidden">
       <NavigationHeader currentScreen="REVEAL" />
       
       {/* Theater Curtains */}

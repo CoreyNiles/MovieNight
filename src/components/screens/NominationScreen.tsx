@@ -180,7 +180,7 @@ export const NominationScreen: React.FC = () => {
   const hasSubmitted = user.id in dailyCycle.nominations;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <NavigationHeader currentScreen="GATHERING_NOMINATIONS" />
       
       <div className="p-4">

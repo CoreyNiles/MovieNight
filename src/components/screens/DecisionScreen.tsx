@@ -48,7 +48,7 @@ export const DecisionScreen: React.FC = () => {
   const decisionsLeft = Math.max(0, totalActiveUsers - userDecisions.length);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <NavigationHeader currentScreen="WAITING_FOR_DECISIONS" />
       
       <div className="flex items-center justify-center p-4" style={{ minHeight: 'calc(100vh - 80px)' }}>

@@ -124,7 +124,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
 
   if (!provider) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black flex items-center justify-center">
         <div className="text-center text-white">
           <h1 className="text-2xl font-bold mb-4">Provider not found</h1>
           <button
@@ -139,7 +139,7 @@ export const StreamingProviderScreen: React.FC<StreamingProviderScreenProps> = (
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
       <div className="p-4">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
