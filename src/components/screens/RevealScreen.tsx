@@ -4,13 +4,17 @@ import { Trophy, Clock, Calendar, Star } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
+import { CONSTANTS, VOTE_POINTS } from '../../constants';
 
 export const RevealScreen: React.FC = () => {
   const { user } = useAuth();
   const { sharedMovies } = useSharedMovies();
   const { dailyCycle } = useDailyCycle();
+  const { config } = useAppConfig();
   const [phase, setPhase] = useState<'curtains' | 'popcorn' | 'reveal'>('curtains');
+  const [tieOccurred, setTieOccurred] = useState(false);
 
   useEffect(() => {
     // Phase 1: Close curtains (2 seconds)
@@ -38,15 +42,15 @@ export const RevealScreen: React.FC = () => {
 
     // Calculate votes
     Object.values(dailyCycle.votes).forEach(vote => {
-      if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + 3;
-      if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + 2;
-      if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + 1;
+      if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + VOTE_POINTS.FIRST_PLACE;
+      if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + VOTE_POINTS.SECOND_PLACE;
+      if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + VOTE_POINTS.THIRD_PLACE;
     });
 
     // Apply underdog boost
     uniqueMovieIds.forEach(movieId => {
       const movie = sharedMovies.find(m => m.id === movieId);
-      if (movie && movie.nomination_streak >= 5) {
+      if (movie && movie.nomination_streak >= config.underdog_boost_threshold) {
         // Add 1 to each vote received (underdog boost)
         Object.values(dailyCycle.votes).forEach(vote => {
           if (vote.top_pick === movieId) scores[movieId] += 1;
@@ -65,6 +69,11 @@ export const RevealScreen: React.FC = () => {
         return (a.movie?.runtime || 0) - (b.movie?.runtime || 0);
       });
 
+    // Check for tie
+    if (sortedMovies.length > 1 && sortedMovies[0].score === sortedMovies[1].score) {
+      setTieOccurred(true);
+    }
+
     return sortedMovies[0];
   };
 
@@ -76,7 +85,7 @@ export const RevealScreen: React.FC = () => {
     score: dailyCycle.winning_movie?.score || 0,
     movie: {
       title: 'Tonight\'s Selected Movie',
-      poster_url: 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400',
+      poster_url: CONSTANTS.FALLBACK_POSTER_URL,
       release_year: new Date().getFullYear(),
       runtime: 120,
       nomination_streak: 0
@@ -175,6 +184,17 @@ export const RevealScreen: React.FC = () => {
                 🎭 Tonight's Feature Presentation! 🎭
               </motion.h1>
 
+              {tieOccurred && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="bg-yellow-500/20 text-yellow-300 px-6 py-3 rounded-lg mb-6 inline-block"
+                >
+                  🎯 It was a tie! The shorter movie won the tiebreaker.
+                </motion.div>
+              )}
+
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -193,7 +213,7 @@ export const RevealScreen: React.FC = () => {
                     alt={displayWinner.movie?.title}
                     className="w-full max-w-sm mx-auto rounded-lg shadow-2xl border-4 border-yellow-400/50"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/7991579/pexels-photo-7991579.jpeg?auto=compress&cs=tinysrgb&w=400';
+                      (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
                     }}
                   />
                   
@@ -227,7 +247,7 @@ export const RevealScreen: React.FC = () => {
                       </div>
                     </motion.div>
 
-                    {displayWinner.movie?.nomination_streak && displayWinner.movie.nomination_streak >= 5 && (
+                    {displayWinner.movie?.nomination_streak && displayWinner.movie.nomination_streak >= config.underdog_boost_threshold && (
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}

@@ -58,4 +58,5 @@ export interface AppConfig {
   user_inactivity_timeout: number;
   break_interval_minutes: number;
   break_frequency_minutes: number;
+  max_nominations_per_user: number;
 }

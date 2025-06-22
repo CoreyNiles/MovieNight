@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Trophy, Clock, Calendar, Users, Check } from 'lucide-react';
+import { Trophy, Clock, Calendar, Users, Check, Star } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
 import { StatusOverview } from '../common/StatusOverview';
 import { CONSTANTS } from '../../constants';
@@ -13,6 +14,7 @@ export const VotingScreen: React.FC = () => {
   const { user } = useAuth();
   const { sharedMovies } = useSharedMovies();
   const { dailyCycle, submitVote } = useDailyCycle();
+  const { config } = useAppConfig();
   
   const [votes, setVotes] = useState({
     top_pick: '',
@@ -92,7 +94,7 @@ export const VotingScreen: React.FC = () => {
             
             <div className="bg-white/5 rounded-lg p-4">
               <h3 className="text-white font-semibold mb-3">Your Votes:</h3>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {[
                   { key: 'top_pick', label: '1st Choice', points: 3 },
                   { key: 'second_pick', label: '2nd Choice', points: 2 },
@@ -106,11 +108,25 @@ export const VotingScreen: React.FC = () => {
                         <div className="bg-yellow-500 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
                           {points}
                         </div>
-                        <span className="text-white">{label}</span>
+                        <div className="flex items-center space-x-3">
+                          {movie && (
+                            <img
+                              src={movie.poster_url}
+                              alt={movie.title}
+                              className="w-12 h-16 object-cover rounded"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
+                              }}
+                            />
+                          )}
+                          <div className="text-left">
+                            <span className="text-white font-medium block">
+                              {movie ? movie.title : `Movie ID: ${movieId.slice(0, 8)}...`}
+                            </span>
+                            <span className="text-white/70 text-sm">{label}</span>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-white font-medium">
-                        {movie ? movie.title : `Movie ID: ${movieId.slice(0, 8)}...`}
-                      </span>
                     </div>
                   ) : null;
                 })}
@@ -203,9 +219,10 @@ export const VotingScreen: React.FC = () => {
                           <span>{movie.runtime}m</span>
                         </div>
                       </div>
-                      {movie.nomination_streak >= CONSTANTS.UNDERDOG_BOOST_THRESHOLD && (
-                        <div className="mt-2 bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-xs inline-block">
-                          🔥 Underdog Boost!
+                      {movie.nomination_streak >= config.underdog_boost_threshold && (
+                        <div className="mt-2 bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-xs inline-flex items-center space-x-1">
+                          <Star className="h-3 w-3" />
+                          <span>🔥 Underdog Boost!</span>
                         </div>
                       )}
                       <div className="mt-1 text-white/50 text-xs">
