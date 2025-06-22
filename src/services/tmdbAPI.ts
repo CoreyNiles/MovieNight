@@ -33,6 +33,21 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
+  // Define major streaming services we want to prioritize
+  private readonly majorStreamingServices = [
+    'Netflix',
+    'Amazon Prime Video', 
+    'Apple TV Plus',
+    'Apple TV',
+    'Disney Plus',
+    'Disney+',
+    'HBO Max',
+    'Crave',
+    'Paramount Plus',
+    'Paramount+',
+    'Hulu'
+  ];
+
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     try {
       const response = await fetch(url, {
@@ -69,9 +84,13 @@ class TMDBAPI {
           })
         );
 
-        // Only filter out movies without basic data - NO streaming restrictions
+        // Filter for movies with streaming availability
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && movie.title.trim().length > 0
+          movie.title && 
+          movie.title.trim().length > 0 &&
+          movie.isStreamable === true &&
+          movie.streaming_providers && 
+          movie.streaming_providers.length > 0
         );
 
         // Sort by popularity
@@ -104,9 +123,13 @@ class TMDBAPI {
           })
         );
 
-        // Only filter out movies without basic data - NO streaming restrictions
+        // Filter for movies with streaming availability
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && movie.title.trim().length > 0
+          movie.title && 
+          movie.title.trim().length > 0 &&
+          movie.isStreamable === true &&
+          movie.streaming_providers && 
+          movie.streaming_providers.length > 0
         );
 
         return {
@@ -158,9 +181,13 @@ class TMDBAPI {
           })
         );
 
-        // Only filter out movies without basic data - NO streaming restrictions
+        // Filter for movies with streaming availability
         const validMovies = moviesWithDetails.filter(movie => 
-          movie.title && movie.title.trim().length > 0
+          movie.title && 
+          movie.title.trim().length > 0 &&
+          movie.isStreamable === true &&
+          movie.streaming_providers && 
+          movie.streaming_providers.length > 0
         );
 
         return {
@@ -261,9 +288,19 @@ class TMDBAPI {
 
         console.log(`Successfully processed ${moviesWithDetails.length} movies`);
 
-        // CRITICAL: Remove ALL filtering - show every movie found
+        // CRITICAL: Filter to only show movies available on major streaming services
         const validMovies = moviesWithDetails.filter(movie => 
-          movie && movie.title && movie.title.trim().length > 0
+          movie && 
+          movie.title && 
+          movie.title.trim().length > 0 &&
+          movie.isStreamable === true &&
+          movie.streaming_providers && 
+          movie.streaming_providers.length > 0 &&
+          // Additional filter: must have runtime (filters out weird entries)
+          movie.runtime && 
+          movie.runtime > 60 && // At least 60 minutes
+          movie.release_year && 
+          movie.release_year > 1950 // Reasonable release year
         );
 
         // Sort by relevance (vote average and popularity)
@@ -327,10 +364,10 @@ class TMDBAPI {
         }
       }
       
-      // Get Canadian watch providers (but don't filter based on them)
+      // Get Canadian watch providers
       let canadianProviders = null;
       let streamingProviders: string[] = [];
-      let isStreamable = true; // Default to true - assume movies are available somehow
+      let isStreamable = false; // Default to false - must prove availability
       
       try {
         const providersUrl = `${TMDB_API_BASE}/movie/${movie.id}/watch/providers?api_key=${TMDB_API_KEY}`;
@@ -338,15 +375,26 @@ class TMDBAPI {
         canadianProviders = providers.results?.CA;
         
         if (canadianProviders) {
-          // Get all provider types (subscription, rental, purchase)
-          const allProviders = [
-            ...(canadianProviders.flatrate || []),
-            ...(canadianProviders.rent || []),
-            ...(canadianProviders.buy || [])
-          ];
+          // ONLY get subscription (flatrate) providers - no rentals or purchases
+          const subscriptionProviders = canadianProviders.flatrate || [];
           
-          streamingProviders = [...new Set(allProviders.map((provider: any) => provider.provider_name))];
+          // Filter to only major streaming services
+          const majorProviders = subscriptionProviders.filter((provider: any) =>
+            this.majorStreamingServices.some(majorService =>
+              provider.provider_name.toLowerCase().includes(majorService.toLowerCase()) ||
+              majorService.toLowerCase().includes(provider.provider_name.toLowerCase())
+            )
+          );
+          
+          streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
           isStreamable = streamingProviders.length > 0;
+          
+          console.log(`Movie: ${movie.title}`, {
+            allSubscriptionProviders: subscriptionProviders.map((p: any) => p.provider_name),
+            majorProviders: majorProviders.map((p: any) => p.provider_name),
+            finalStreamingProviders: streamingProviders,
+            isStreamable
+          });
         }
       } catch (error) {
         console.warn(`Failed to get providers for movie ${movie.id}:`, error);
@@ -368,7 +416,7 @@ class TMDBAPI {
       };
     } catch (error) {
       console.error('Error enriching movie data:', error);
-      // Return basic data even if enrichment fails
+      // Return basic data but mark as not streamable if enrichment fails
       return {
         id: movie.id,
         title: movie.title,
@@ -377,7 +425,7 @@ class TMDBAPI {
         release_year: movie.release_date ? new Date(movie.release_date).getFullYear() : undefined,
         genre_names: [],
         short_description: movie.overview || undefined,
-        isStreamable: true, // Default to true
+        isStreamable: false, // Default to false if we can't verify
         streaming_providers: [],
         vote_average: movie.vote_average,
         release_date: movie.release_date
