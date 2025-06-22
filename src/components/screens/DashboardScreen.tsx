@@ -181,14 +181,11 @@ export const DashboardScreen: React.FC = () => {
     // Parse times
     const [finishHour, finishMin] = finishTime.split(':').map(Number);
 
-    const today = new Date();
+    // CRITICAL FIX: Use the date from the daily cycle ID instead of guessing
+    const today = new Date(dailyCycle.id + 'T00:00:00');
     let finishDateTime = new Date(today);
     finishDateTime.setHours(finishHour, finishMin, 0, 0);
     
-    // If finish time is early morning, it's next day
-    if (finishHour < 12) {
-      finishDateTime.setDate(finishDateTime.getDate() + 1);
-    }
 
     let startDateTime = new Date(finishDateTime.getTime() - totalEventDuration * 60000);
 
