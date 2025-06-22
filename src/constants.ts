@@ -25,6 +25,30 @@ export const CONSTANTS = {
   // API
   TMDB_IMAGE_BASE_URL: 'https://image.tmdb.org/t/p/w500',
   SEARCH_RESULTS_LIMIT: 10,
+  TRENDING_MOVIES_LIMIT: 10,
+  GENRE_MOVIES_LIMIT: 50,
+  
+  // Streaming Providers
+  STREAMING_PROVIDERS: [
+    { id: 8, name: 'Netflix', logo: '🎬' },
+    { id: 119, name: 'Amazon Prime Video', logo: '📺' },
+    { id: 350, name: 'Apple TV+', logo: '🍎' },
+    { id: 337, name: 'Disney+', logo: '🏰' },
+    { id: 384, name: 'HBO Max', logo: '🎭' },
+    { id: 230, name: 'Crave', logo: '📡' }
+  ],
+  
+  // Popular Genres
+  POPULAR_GENRES: [
+    { id: 28, name: 'Action' },
+    { id: 35, name: 'Comedy' },
+    { id: 18, name: 'Drama' },
+    { id: 27, name: 'Horror' },
+    { id: 878, name: 'Sci-Fi' },
+    { id: 53, name: 'Thriller' },
+    { id: 10749, name: 'Romance' },
+    { id: 16, name: 'Animation' }
+  ]
 } as const;
 
 // Vote point values

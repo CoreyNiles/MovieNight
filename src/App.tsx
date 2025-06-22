@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuth } from './hooks/useAuth';
 import { useDailyCycle } from './hooks/useDailyCycle';
@@ -9,6 +9,8 @@ import { NominationScreen } from './components/screens/NominationScreen';
 import { VotingScreen } from './components/screens/VotingScreen';
 import { RevealScreen } from './components/screens/RevealScreen';
 import { DashboardScreen } from './components/screens/DashboardScreen';
+import { StreamingProviderScreen } from './components/screens/StreamingProviderScreen';
+import { CONSTANTS } from './constants';
 
 function App() {
   const { user, loading: authLoading } = useAuth();
@@ -58,7 +60,23 @@ function App() {
   return (
     <Router>
       <div className="App">
-        {getCurrentScreen()}
+        <Routes>
+          {/* Main app flow */}
+          <Route path="/" element={getCurrentScreen()} />
+          <Route path="/nominations" element={<NominationScreen />} />
+          
+          {/* Streaming provider pages */}
+          <Route 
+            path="/provider/:providerId" 
+            element={
+              <StreamingProviderScreen 
+                selectedMovies={[]} // This will be managed by the component itself
+                onMovieSelect={() => {}} // This will be managed by the component itself
+                maxSelections={CONSTANTS.MAX_NOMINATIONS_PER_USER}
+              />
+            } 
+          />
+        </Routes>
         <Toaster position="top-right" />
       </div>
     </Router>
