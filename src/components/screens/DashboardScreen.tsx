@@ -18,6 +18,7 @@ export const DashboardScreen: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [remindersSet, setRemindersSet] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [showNotificationMessage, setShowNotificationMessage] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -27,7 +28,13 @@ export const DashboardScreen: React.FC = () => {
   // Check notification permission on mount
   useEffect(() => {
     if ('Notification' in window) {
-      setNotificationPermission(Notification.permission);
+      const permission = Notification.permission;
+      setNotificationPermission(permission);
+      
+      // Show message if notifications are denied
+      if (permission === 'denied') {
+        setShowNotificationMessage(true);
+      }
     }
   }, []);
 
@@ -59,7 +66,11 @@ export const DashboardScreen: React.FC = () => {
         setNotificationPermission(permission);
         
         if (permission === 'denied') {
-          toast.error('Notifications denied. Manual reminders available below.');
+          setShowNotificationMessage(true);
+        }
+        
+        if (permission === 'denied') {
+          // Don't show toast here, the UI message will handle it
           return;
         }
       }
@@ -181,11 +192,15 @@ export const DashboardScreen: React.FC = () => {
     // Parse times
     const [finishHour, finishMin] = finishTime.split(':').map(Number);
 
-    // CRITICAL FIX: Use the date from the daily cycle ID instead of guessing
-    const today = new Date(dailyCycle.id + 'T00:00:00');
-    let finishDateTime = new Date(today);
+    // Use the cycle date as the base date for the movie night
+    const cycleDate = new Date(dailyCycle.id + 'T00:00:00');
+    let finishDateTime = new Date(cycleDate);
     finishDateTime.setHours(finishHour, finishMin, 0, 0);
     
+    // If finish time is early morning (before noon), it's the next calendar day
+    if (finishHour < 12) {
+      finishDateTime.setDate(finishDateTime.getDate() + 1);
+    }
 
     let startDateTime = new Date(finishDateTime.getTime() - totalEventDuration * 60000);
 
@@ -251,6 +266,29 @@ export const DashboardScreen: React.FC = () => {
               <p className="text-green-300/80 text-sm mt-1">
                 You'll receive phone notifications 30 minutes before, 5 minutes before, and at showtime
               </p>
+            </motion.div>
+          )}
+
+          {/* Notification Permission Denied Message */}
+          {showNotificationMessage && notificationPermission === 'denied' && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-yellow-500/20 border border-yellow-500/30 rounded-xl p-4 mb-6"
+            >
+              <div className="flex items-center justify-center space-x-2 text-yellow-300 mb-2">
+                <Bell className="h-5 w-5" />
+                <span className="font-semibold">Automatic reminders are disabled</span>
+              </div>
+              <p className="text-yellow-300/80 text-sm text-center">
+                To enable them, please go to your phone's Settings → Apps → MovieNight → Notifications and allow notifications.
+              </p>
+              <button
+                onClick={() => setShowNotificationMessage(false)}
+                className="mt-3 mx-auto block text-yellow-300/60 hover:text-yellow-300 text-xs underline"
+              >
+                Dismiss
+              </button>
             </motion.div>
           )}
 
@@ -380,12 +418,12 @@ export const DashboardScreen: React.FC = () => {
               <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
                 <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
                   <Bell className="h-5 w-5 mr-2" />
-                  Manual Reminders
+                  {notificationPermission === 'granted' ? 'Additional Reminders' : 'Manual Reminders'}
                 </h3>
                 
-                {notificationPermission === 'denied' && (
-                  <div className="bg-yellow-500/20 text-yellow-300 px-3 py-2 rounded-lg text-sm mb-4">
-                    <strong>Note:</strong> Notifications are disabled. These will create calendar events instead.
+                {notificationPermission === 'denied' && !showNotificationMessage && (
+                  <div className="bg-red-500/20 text-red-300 px-3 py-2 rounded-lg text-sm mb-4">
+                    <strong>Note:</strong> Notifications are disabled. Enable them in your phone settings to use reminders.
                   </div>
                 )}
                 
@@ -396,6 +434,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - 30 Minute Warning',
                       `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
                     )}
+                    disabled={notificationPermission !== 'granted'}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
                   >
                     <span>30-minute warning</span>
@@ -408,6 +447,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - 5 Minute Warning',
                       `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
                     )}
+                    disabled={notificationPermission !== 'granted'}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
                   >
                     <span>5-minute warning</span>
@@ -420,6 +460,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - Show Time!',
                       `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
                     )}
+                    disabled={notificationPermission !== 'granted'}
                     className="w-full flex justify-between items-center bg-purple-500/30 hover:bg-purple-500/40 p-3 rounded-lg transition-colors text-white font-semibold"
                   >
                     <span>Show time!</span>
@@ -429,8 +470,8 @@ export const DashboardScreen: React.FC = () => {
                 
                 <p className="text-white/60 text-xs mt-3 text-center">
                   {notificationPermission === 'granted' 
-                    ? 'Click any reminder to set an additional notification'
-                    : 'Click any reminder to download a calendar event'
+                    ? 'Click any reminder to set an additional notification' 
+                    : 'Enable notifications in your phone settings to use reminders'
                   }
                 </p>
               </div>
