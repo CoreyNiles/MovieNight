@@ -43,6 +43,16 @@ class TMDBAPI {
     'crave',
     'disney plus'
   ];
+  // Keywords for flexible provider matching (instead of exact names)
+  private readonly majorStreamerKeywords = [
+    'netflix',
+    'prime video',
+    'apple tv',
+    'tubi',
+    'mubi',
+    'crave',
+    'disney plus'
+  ];
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
     try {

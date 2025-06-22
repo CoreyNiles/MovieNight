@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Clock, Calendar, Star } from 'lucide-react';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
@@ -6,7 +6,7 @@ import { useSharedMovies } from '../../hooks/useSharedMovies';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppConfig } from '../../hooks/useAppConfig';
 import { NavigationHeader } from '../common/NavigationHeader';
-import { CONSTANTS, VOTE_POINTS } from '../../constants';
+import { CONSTANTS } from '../../constants';
 
 interface RevealScreenProps {
   onRevealComplete?: () => void;
@@ -18,7 +18,6 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
   const { dailyCycle } = useDailyCycle();
   const { config } = useAppConfig();
   const [phase, setPhase] = useState<'curtains' | 'popcorn' | 'reveal'>('curtains');
-  const [tieOccurred, setTieOccurred] = useState(false);
 
   useEffect(() => {
     // Phase 1: Close curtains (2 seconds)
@@ -43,77 +42,24 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
     }
   }, [phase, onRevealComplete]);
 
-  const winnerData = useMemo(() => {
-    if (!dailyCycle) return null;
-
-    const scores: Record<string, number> = {};
-    const allNominations = Object.values(dailyCycle.nominations).flat();
-    const uniqueMovieIds = [...new Set(allNominations)];
-
-    // Initialize scores
-    uniqueMovieIds.forEach(movieId => {
-      scores[movieId] = 0;
-    });
-
-    // Calculate votes
-    Object.values(dailyCycle.votes).forEach(vote => {
-      if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + VOTE_POINTS.FIRST_PLACE;
-      if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + VOTE_POINTS.SECOND_PLACE;
-      if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + VOTE_POINTS.THIRD_PLACE;
-    });
-
-    // Apply underdog boost
-    uniqueMovieIds.forEach(movieId => {
-      const movie = sharedMovies.find(m => m.id === movieId);
-      if (movie && movie.nomination_streak >= config.underdog_boost_threshold) {
-        // Add 1 to each vote received (underdog boost)
-        Object.values(dailyCycle.votes).forEach(vote => {
-          if (vote.top_pick === movieId) scores[movieId] += 1;
-          if (vote.second_pick === movieId) scores[movieId] += 1;
-          if (vote.third_pick === movieId) scores[movieId] += 1;
-        });
-      }
-    });
-
-    // Find winner (highest score, then shortest runtime for ties)
-    const sortedMovies = uniqueMovieIds
-      .map(id => ({ id, score: scores[id], movie: sharedMovies.find(m => m.id === id) }))
-      .filter(item => item.movie)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return (a.movie?.runtime || 0) - (b.movie?.runtime || 0);
-      });
-
-    // Check for tie
-    const hasTie = sortedMovies.length > 1 && sortedMovies[0].score === sortedMovies[1].score;
-
-    return {
-      winner: sortedMovies[0],
-      hasTie
-    };
-  }, [dailyCycle, sharedMovies, config.underdog_boost_threshold]);
-
-  // Handle tie detection as a side effect
-  useEffect(() => {
-    if (winnerData?.hasTie) {
-      setTieOccurred(true);
-    }
-  }, [winnerData?.hasTie]);
-
-  if (!dailyCycle || !winnerData) return null;
-
-  const { winner } = winnerData;
+  if (!dailyCycle?.winning_movie) return null;
 
   // If no winner found in shared movies, show a generic winner
-  const displayWinner = winner || {
-    id: dailyCycle.winning_movie?.movie_id || 'unknown',
-    score: dailyCycle.winning_movie?.score || 0,
-    movie: {
-      title: 'Tonight\'s Selected Movie',
-      poster_url: CONSTANTS.FALLBACK_POSTER_URL,
-      release_year: new Date().getFullYear(),
-      runtime: 120,
-      nomination_streak: 0
+  const winningMovie = sharedMovies.find(m => m.id === dailyCycle.winning_movie?.movie_id);
+  const displayWinner = {
+    movie_id: dailyCycle.winning_movie.movie_id,
+    score: dailyCycle.winning_movie.score,
+    movie: winningMovie || {
+      id: dailyCycle.winning_movie.movie_id,
+      title: dailyCycle.winning_movie.title || 'Tonight\'s Selected Movie',
+      poster_url: dailyCycle.winning_movie.poster_url || CONSTANTS.FALLBACK_POSTER_URL,
+      runtime: dailyCycle.winning_movie.runtime || 120,
+      release_year: dailyCycle.winning_movie.release_year || new Date().getFullYear(),
+      genre_names: ['Drama'],
+      short_description: 'The movie selected for tonight\'s viewing.',
+      nomination_streak: 0,
+      added_at: new Date(),
+      justwatch_id: 'unknown'
     }
   };
 
@@ -209,16 +155,6 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
                 🎭 Tonight's Feature Presentation! 🎭
               </motion.h1>
 
-              {tieOccurred && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.6 }}
-                  className="bg-yellow-500/20 text-yellow-300 px-6 py-3 rounded-lg mb-6 inline-block"
-                >
-                  🎯 It was a tie! The shorter movie won the tiebreaker.
-                </motion.div>
-              )}
 
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
@@ -234,8 +170,8 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
                     initial={{ opacity: 0, x: -50 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.9 }}
-                    src={displayWinner.movie?.poster_url}
-                    alt={displayWinner.movie?.title}
+                    src={displayWinner.movie.poster_url}
+                    alt={displayWinner.movie.title}
                     className="w-full max-w-sm mx-auto rounded-lg shadow-2xl border-4 border-yellow-400/50"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = CONSTANTS.FALLBACK_POSTER_URL;
@@ -249,7 +185,7 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
                       transition={{ delay: 1.1 }}
                       className="text-4xl font-bold text-white mb-4"
                     >
-                      {displayWinner.movie?.title}
+                      {displayWinner.movie.title}
                     </motion.h2>
                     
                     <motion.div
@@ -260,11 +196,11 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
                     >
                       <div className="flex items-center space-x-3 text-white/90">
                         <Calendar className="h-5 w-5" />
-                        <span className="text-lg">{displayWinner.movie?.release_year}</span>
+                        <span className="text-lg">{displayWinner.movie.release_year}</span>
                       </div>
                       <div className="flex items-center space-x-3 text-white/90">
                         <Clock className="h-5 w-5" />
-                        <span className="text-lg">{displayWinner.movie?.runtime} minutes</span>
+                        <span className="text-lg">{displayWinner.movie.runtime} minutes</span>
                       </div>
                       <div className="flex items-center space-x-3 text-white/90">
                         <Star className="h-5 w-5 text-yellow-400" />
@@ -272,7 +208,7 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({ onRevealComplete }) 
                       </div>
                     </motion.div>
 
-                    {displayWinner.movie?.nomination_streak && displayWinner.movie.nomination_streak >= config.underdog_boost_threshold && (
+                    {displayWinner.movie.nomination_streak && displayWinner.movie.nomination_streak >= config.underdog_boost_threshold && (
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}

@@ -82,12 +82,7 @@ function App() {
       case 'GATHERING_VOTES':
         return <VotingScreen />;
       case 'REVEAL':
-        // Individual reveal logic: only show reveal if user hasn't seen it today
-        if (!hasSeenReveal) {
-          return <RevealScreen onRevealComplete={markRevealAsSeen} />;
-        } else {
-          return <DashboardScreen />;
-        }
+        return !hasSeenReveal ? <RevealScreen onRevealComplete={markRevealAsSeen} /> : <DashboardScreen />;
       case 'DASHBOARD_VIEW':
         return <DashboardScreen />;
       default:

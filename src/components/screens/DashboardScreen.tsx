@@ -59,8 +59,7 @@ export const DashboardScreen: React.FC = () => {
         setNotificationPermission(permission);
         
         if (permission === 'denied') {
-          // Fallback to calendar event if notifications are denied
-          toast.error('Notifications denied. You can manually set calendar reminders below.');
+          toast.error('Notifications denied. Manual reminders available below.');
           return;
         }
       }
@@ -129,7 +128,7 @@ export const DashboardScreen: React.FC = () => {
   };
 
   const scheduleManualAlarm = (time: Date, title: string, message: string) => {
-    // For manual alarms, try notifications first, then fallback to calendar
+    // For manual alarms, use notifications only
     if ('Notification' in window && Notification.permission === 'granted') {
       const timeUntilAlarm = time.getTime() - Date.now();
       if (timeUntilAlarm > 0) {
@@ -146,22 +145,7 @@ export const DashboardScreen: React.FC = () => {
         toast.error('Cannot set reminder for past time');
       }
     } else {
-      // Fallback to calendar event
-      const calendarUrl = `data:text/calendar;charset=utf8,BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-DTSTART:${time.toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-SUMMARY:${title}
-DESCRIPTION:${message}
-END:VEVENT
-END:VCALENDAR`;
-      
-      const link = document.createElement('a');
-      link.href = calendarUrl;
-      link.download = 'movie-reminder.ics';
-      link.click();
-      
-      toast.success('📅 Calendar event downloaded');
+      toast.error('Notifications must be enabled to set manual reminders');
     }
   };
 

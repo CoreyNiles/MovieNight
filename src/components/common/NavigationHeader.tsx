@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { LogOut, Users, Clock, Film, Vote, Trophy, Calendar, RotateCcw } from 'lucide-react';
+import { LogOut, Users, Clock, Film, Vote, Trophy, Calendar, RotateCcw, FastForward } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useDailyCycle } from '../../hooks/useDailyCycle';
 import { DailyCycle } from '../../types';
@@ -48,6 +48,16 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentScree
     }
   };
 
+  const handleForceAdvance = async () => {
+    if (user?.email === 'coreyniles1992@gmail.com' && dailyCycle?.current_status === 'GATHERING_NOMINATIONS') {
+      try {
+        await updateCycleStatus('GATHERING_VOTES');
+        toast.success('Forced advance to voting phase');
+      } catch (error) {
+        toast.error('Failed to force advance');
+      }
+    }
+  };
   if (!user || !dailyCycle) return null;
 
   const getScreenIcon = (screen: string) => {
@@ -141,16 +151,31 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentScree
           <div className="flex items-center space-x-4">
             {/* Admin Reset Button */}
             {user.email === 'coreyniles1992@gmail.com' && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleReset}
-                className="flex items-center space-x-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-2 rounded-lg transition-colors border border-red-500/30"
-                title="Admin: Reset Daily Cycle"
-              >
-                <RotateCcw className="h-4 w-4" />
-                <span className="hidden sm:inline text-sm">Reset</span>
-              </motion.button>
+              <>
+                {dailyCycle.current_status === 'GATHERING_NOMINATIONS' && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleForceAdvance}
+                    className="flex items-center space-x-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 px-3 py-2 rounded-lg transition-colors border border-orange-500/30"
+                    title="Admin: Force Advance to Voting"
+                  >
+                    <FastForward className="h-4 w-4" />
+                    <span className="hidden sm:inline text-sm">Force Advance</span>
+                  </motion.button>
+                )}
+                
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleReset}
+                  className="flex items-center space-x-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-2 rounded-lg transition-colors border border-red-500/30"
+                  title="Admin: Reset Daily Cycle"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="hidden sm:inline text-sm">Reset</span>
+                </motion.button>
+              </>
             )}
             
             <button

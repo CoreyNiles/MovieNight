@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { doc, onSnapshot, setDoc, updateDoc, getDoc, deleteDoc, runTransaction } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { db } from '../config/firebase';
+import { useSharedMovies } from './useSharedMovies';
+import { useAppConfig } from './useAppConfig';
 import { DailyCycle, DailyState } from '../types';
 import { CONSTANTS, VOTE_POINTS } from '../constants';
 
@@ -23,6 +25,8 @@ export const useDailyCycle = () => {
   const [dailyCycle, setDailyCycle] = useState<DailyCycle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { sharedMovies } = useSharedMovies();
+  const { config } = useAppConfig();
 
   // Centralized winner calculation function
   const calculateWinner = (cycle: DailyCycle): any => {
@@ -35,19 +39,51 @@ export const useDailyCycle = () => {
       scores[movieId] = 0;
     });
 
-    // Calculate votes (3 points for 1st, 2 for 2nd, 1 for 3rd)
+    // Calculate votes
     Object.values(cycle.votes).forEach(vote => {
       if (vote.top_pick) scores[vote.top_pick] = (scores[vote.top_pick] || 0) + VOTE_POINTS.FIRST_PLACE;
       if (vote.second_pick) scores[vote.second_pick] = (scores[vote.second_pick] || 0) + VOTE_POINTS.SECOND_PLACE;
       if (vote.third_pick) scores[vote.third_pick] = (scores[vote.third_pick] || 0) + VOTE_POINTS.THIRD_PLACE;
     });
 
-    // Find winner (highest score)
-    const sortedMovies = uniqueMovieIds
-      .map(id => ({ movie_id: id, score: scores[id] }))
-      .sort((a, b) => b.score - a.score);
+    // Apply underdog boost
+    uniqueMovieIds.forEach(movieId => {
+      const movie = sharedMovies.find(m => m.id === movieId);
+      if (movie && movie.nomination_streak >= config.underdog_boost_threshold) {
+        // Add 1 to each vote received (underdog boost)
+        Object.values(cycle.votes).forEach(vote => {
+          if (vote.top_pick === movieId) scores[movieId] += 1;
+          if (vote.second_pick === movieId) scores[movieId] += 1;
+          if (vote.third_pick === movieId) scores[movieId] += 1;
+        });
+      }
+    });
 
-    return sortedMovies[0] || null;
+    // Find winner (highest score, then shortest runtime for ties)
+    const sortedMovies = uniqueMovieIds
+      .map(id => ({ 
+        movie_id: id, 
+        score: scores[id], 
+        movie: sharedMovies.find(m => m.id === id),
+        title: sharedMovies.find(m => m.id === id)?.title || 'Unknown Movie',
+        poster_url: sharedMovies.find(m => m.id === id)?.poster_url || CONSTANTS.FALLBACK_POSTER_URL,
+        runtime: sharedMovies.find(m => m.id === id)?.runtime || 120,
+        release_year: sharedMovies.find(m => m.id === id)?.release_year || new Date().getFullYear()
+      }))
+      .filter(item => item.movie)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (a.runtime || 0) - (b.runtime || 0);
+      });
+
+    return sortedMovies.length > 0 ? {
+      movie_id: sortedMovies[0].movie_id,
+      title: sortedMovies[0].title,
+      poster_url: sortedMovies[0].poster_url,
+      runtime: sortedMovies[0].runtime,
+      release_year: sortedMovies[0].release_year,
+      score: sortedMovies[0].score
+    } : null;
   };
 
   const checkAndAdvanceStatus = async (cycle: DailyCycle) => {
