@@ -343,32 +343,21 @@ class TMDBAPI {
       }
       
       // Get Canadian watch providers
-      let canadianProviders = null;
       let streamingProviders: string[] = [];
       let isStreamable = false;
       
       try {
         const providersUrl = `${TMDB_API_BASE}/movie/${movie.id}/watch/providers?api_key=${TMDB_API_KEY}`;
-        const providers = await this.makeRequest(providersUrl);
-        canadianProviders = providers.results?.CA;
-        
-        if (canadianProviders) {
-          // ONLY get subscription (flatrate) providers - no rentals or purchases
-          const flatrateProviders = canadianProviders.flatrate || [];
-          
-          // Trust all subscription providers instead of filtering by keywords
-          streamingProviders = [...new Set(flatrateProviders.map((provider: any) => provider.provider_name))];
-          isStreamable = flatrateProviders.length > 0;
-          
-          console.log(`Movie: ${movie.title}`, {
-            flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
-            finalStreamingProviders: streamingProviders,
-            isStreamable
-          });
+        const providersResponse = await this.makeRequest(providersUrl);
+        const canadianProviders = providersResponse.results?.CA;
+
+        // Simplified, robust check: If a "flatrate" (subscription) array exists and is not empty, it's streamable.
+        if (canadianProviders && canadianProviders.flatrate && canadianProviders.flatrate.length > 0) {
+          isStreamable = true;
+          streamingProviders = [...new Set(canadianProviders.flatrate.map((p: any) => p.provider_name))];
         }
       } catch (error) {
         console.warn(`Failed to get providers for movie ${movie.id}:`, error);
-        // Continue without provider info - mark as not streamable
         isStreamable = false;
       }
 
