@@ -2,7 +2,7 @@ import { CONSTANTS } from '../constants';
 
 // TMDB API service for movie search and details with Canadian availability
 const TMDB_API_BASE = 'https://api.themoviedb.org/3';
-const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_API_KEY = 'a07e22bc18f5cb106bfe4cc1f83ad8ed';
 
 interface TMDBMovie {
   id: number;
@@ -279,16 +279,13 @@ class TMDBAPI {
       let streamingProviders: string[] = [];
       let isStreamable = false;
       
-      if (canadianProviders) {
-        // ONLY get subscription (flatrate) providers - no rentals or purchases
-        const flatrateProviders = canadianProviders.flatrate || [];
-        
-        // Trust all subscription providers instead of filtering by keywords
-        streamingProviders = [...new Set(flatrateProviders.map((provider: any) => provider.provider_name))];
-        isStreamable = flatrateProviders.length > 0;
+      if (canadianProviders && canadianProviders.flatrate && canadianProviders.flatrate.length > 0) {
+        // If there are any subscription providers, the movie is streamable
+        isStreamable = true;
+        streamingProviders = [...new Set(canadianProviders.flatrate.map((p: any) => p.provider_name))];
         
         console.log(`Movie ${movieId} streaming details:`, {
-          flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
+          flatrateProviders: canadianProviders.flatrate.map((p: any) => p.provider_name),
           isStreamable,
           streamingProviders,
           runtime: details.runtime
