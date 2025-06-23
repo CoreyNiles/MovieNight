@@ -13,6 +13,15 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate required Firebase configuration
+const requiredConfig = ['apiKey', 'authDomain', 'projectId'];
+const missingConfig = requiredConfig.filter(key => !firebaseConfig[key as keyof typeof firebaseConfig]);
+
+if (missingConfig.length > 0) {
+  console.error('Missing Firebase configuration:', missingConfig);
+  throw new Error(`Missing required Firebase configuration: ${missingConfig.join(', ')}`);
+}
+
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
