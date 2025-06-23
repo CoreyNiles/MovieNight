@@ -327,20 +327,43 @@ export const DashboardScreen: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Streaming Information */}
-                  {winningMovieDetails && (
-                    <div className="mb-6">
-                      <h3 className="text-white font-semibold mb-2 flex items-center">
-                        <Tv className="h-4 w-4 mr-2" />
-                        Where to Watch
-                      </h3>
-                      <div className="flex items-center space-x-2 text-green-400 text-sm mb-2">
-                        <MapPin className="h-4 w-4" />
-                        <span>Available in Canada</span>
+                  {/* Enhanced Streaming Information */}
+                  <div className="mb-6">
+                    <h3 className="text-white font-semibold mb-3 flex items-center">
+                      <Tv className="h-4 w-4 mr-2" />
+                      Where to Watch
+                    </h3>
+                    
+                    {winningMovieDetails?.streaming_providers && winningMovieDetails.streaming_providers.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-green-400 text-sm mb-2">
+                          <MapPin className="h-4 w-4" />
+                          <span>Available on these services:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {winningMovieDetails.streaming_providers.map((provider, index) => (
+                            <span
+                              key={index}
+                              className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-sm font-medium border border-blue-500/30"
+                            >
+                              {provider}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-white/60 text-xs mt-2">
+                          Available for streaming, rental, or purchase
+                        </p>
                       </div>
-                      <p className="text-white/70 text-sm">Check your favorite streaming service</p>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-green-400 text-sm mb-2">
+                          <MapPin className="h-4 w-4" />
+                          <span>Available in Canada</span>
+                        </div>
+                        <p className="text-white/70 text-sm">Check your favorite streaming service</p>
+                      </div>
+                    )}
+                  </div>
                   
                   <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg p-4">
                     <div className="text-center">
