@@ -10,22 +10,8 @@ import { format, addMinutes } from 'date-fns';
 import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
-// Median.co JavaScript Bridge API declaration
-declare global {
-  interface Window {
-    median?: {
-      notifications?: {
-        requestPermission(): Promise<{ granted: boolean }>;
-        schedule(options: {
-          title: string;
-          body: string;
-          date: Date;
-          id?: string;
-        }): Promise<void>;
-      };
-    };
-  }
-}
+// Import the Median.co JavaScript Bridge
+import median from 'median-js-bridge';
 
 export const DashboardScreen: React.FC = () => {
   const { user } = useAuth();
@@ -43,8 +29,8 @@ export const DashboardScreen: React.FC = () => {
 
   // Check if Median.co notifications are available
   useEffect(() => {
-    const isMedianAvailable = typeof window.median !== 'undefined' && 
-                             typeof window.median.notifications !== 'undefined';
+    const isMedianAvailable = typeof median !== 'undefined' && 
+                             typeof median.notifications !== 'undefined';
     setNotificationSupported(isMedianAvailable);
     
     if (!isMedianAvailable) {
@@ -74,13 +60,13 @@ export const DashboardScreen: React.FC = () => {
 
     try {
       // Check if the Median JavaScript bridge is available
-      if (!window.median?.notifications) {
+      if (!median?.notifications) {
         toast.error("Notification service is not available in web browser mode.");
         return;
       }
 
       // Request permission using Median's function
-      const permissionResult = await window.median.notifications.requestPermission();
+      const permissionResult = await median.notifications.requestPermission();
 
       if (permissionResult.granted) {
         const reminders = [
@@ -110,7 +96,7 @@ export const DashboardScreen: React.FC = () => {
           if (reminder.time.getTime() > Date.now()) {
             try {
               // Schedule each notification using Median's function
-              await window.median.notifications.schedule({
+              await median.notifications.schedule({
                 title: reminder.title,
                 body: reminder.message,
                 date: reminder.time,
@@ -143,7 +129,7 @@ export const DashboardScreen: React.FC = () => {
   };
 
   const scheduleManualAlarm = async (time: Date, title: string, message: string) => {
-    if (!window.median?.notifications) {
+    if (!median?.notifications) {
       toast.error("Notification service is not available in web browser mode.");
       return;
     }
@@ -154,7 +140,7 @@ export const DashboardScreen: React.FC = () => {
     }
 
     try {
-      await window.median.notifications.schedule({
+      await median.notifications.schedule({
         title: title,
         body: message,
         date: time,
