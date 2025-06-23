@@ -179,7 +179,9 @@ export const DashboardScreen: React.FC = () => {
       added_at: new Date(),
       justwatch_id: 'unknown',
       original_owner: 'unknown',
-      shared_at: new Date()
+      shared_at: new Date(),
+      // Include streaming providers from the winning movie data
+      streaming_providers: dailyCycle.winning_movie.streaming_providers || []
     };
 
     const finishTime = dailyCycle.schedule_settings.finish_by_time;
@@ -233,9 +235,6 @@ export const DashboardScreen: React.FC = () => {
 
   const timeUntilStart = schedule.startTime.getTime() - currentTime.getTime();
   const isStartTime = timeUntilStart <= 0;
-
-  // Get streaming providers for the winning movie
-  const winningMovieDetails = sharedMovies.find(m => m.id === dailyCycle.winning_movie?.movie_id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black">
@@ -334,14 +333,14 @@ export const DashboardScreen: React.FC = () => {
                       Where to Watch
                     </h3>
                     
-                    {winningMovieDetails?.streaming_providers && winningMovieDetails.streaming_providers.length > 0 ? (
+                    {schedule.movie.streaming_providers && schedule.movie.streaming_providers.length > 0 ? (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2 text-green-400 text-sm mb-2">
                           <MapPin className="h-4 w-4" />
                           <span>Available on these services:</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {winningMovieDetails.streaming_providers.map((provider, index) => (
+                          {schedule.movie.streaming_providers.map((provider, index) => (
                             <span
                               key={index}
                               className="bg-blue-500/20 text-blue-300 px-3 py-1 rounded-full text-sm font-medium border border-blue-500/30"

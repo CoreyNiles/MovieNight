@@ -68,7 +68,9 @@ export const useDailyCycle = () => {
         title: sharedMovies.find(m => m.id === id)?.title || 'Unknown Movie',
         poster_url: sharedMovies.find(m => m.id === id)?.poster_url || CONSTANTS.FALLBACK_POSTER_URL,
         runtime: sharedMovies.find(m => m.id === id)?.runtime || 120,
-        release_year: sharedMovies.find(m => m.id === id)?.release_year || new Date().getFullYear()
+        release_year: sharedMovies.find(m => m.id === id)?.release_year || new Date().getFullYear(),
+        // Include streaming provider information
+        streaming_providers: sharedMovies.find(m => m.id === id)?.streaming_providers || []
       }))
       .filter(item => item.movie)
       .sort((a, b) => {
@@ -82,7 +84,9 @@ export const useDailyCycle = () => {
       poster_url: sortedMovies[0].poster_url,
       runtime: sortedMovies[0].runtime,
       release_year: sortedMovies[0].release_year,
-      score: sortedMovies[0].score
+      score: sortedMovies[0].score,
+      // Include streaming providers in the winner data
+      streaming_providers: sortedMovies[0].streaming_providers
     } : null;
   };
 

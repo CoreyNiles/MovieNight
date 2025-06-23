@@ -17,6 +17,7 @@ export interface Movie {
   short_description?: string;
   nomination_streak: number;
   added_at: Date;
+  streaming_providers?: string[]; // Add streaming providers to Movie interface
 }
 
 export enum DailyState {
@@ -45,6 +46,7 @@ export interface DailyCycle {
     release_year: number;
     score: number;
     start_time?: string;
+    streaming_providers?: string[]; // Add streaming providers to winning movie
   };
   schedule_settings: {
     finish_by_time: string;
