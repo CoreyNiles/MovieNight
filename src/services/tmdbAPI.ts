@@ -13,7 +13,7 @@ interface TMDBMovie {
   genre_names?: string[];
   short_description?: string;
   imdb_id?: string;
-  isStreamable?: boolean;
+  isStreamable?: boolean; // Now means "available on major services (stream/rent/buy)"
   streaming_providers?: string[];
   vote_average?: number;
   vote_count?: number;
@@ -34,15 +34,15 @@ interface FilterOptions {
 }
 
 class TMDBAPI {
-  // Simple keywords for major streaming services
+  // Updated list of major streaming services to check for
   private readonly majorStreamerKeywords = [
-    'netflix', 
-    'prime video', 
-    'apple tv', 
-    'disney', 
-    'crave', 
-    'hbo',
-    'paramount'
+    'disney',
+    'netflix',
+    'apple tv',
+    'prime', // Catches 'Amazon Prime Video'
+    'crave',
+    'tubi',
+    'mubi'
   ];
 
   private async makeRequest(url: string, options: RequestInit = {}): Promise<any> {
@@ -81,7 +81,7 @@ class TMDBAPI {
           })
         );
 
-        // Filter for movies with streaming availability
+        // Filter for movies available on major services
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
@@ -111,7 +111,7 @@ class TMDBAPI {
           })
         );
 
-        // Filter for movies with streaming availability
+        // Filter for movies available on major services
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
@@ -163,7 +163,7 @@ class TMDBAPI {
           })
         );
 
-        // Filter for movies with streaming availability
+        // Filter for movies available on major services
         const validMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
         return {
@@ -279,15 +279,37 @@ class TMDBAPI {
       let streamingProviders: string[] = [];
       let isStreamable = false;
       
-      if (canadianProviders && canadianProviders.flatrate && canadianProviders.flatrate.length > 0) {
-        // If there are any subscription providers, the movie is streamable
-        isStreamable = true;
-        streamingProviders = [...new Set(canadianProviders.flatrate.map((p: any) => p.provider_name))];
+      if (canadianProviders) {
+        // Check all three categories: subscription, rental, and purchase
+        const flatrate = canadianProviders.flatrate || [];
+        const rent = canadianProviders.rent || [];
+        const buy = canadianProviders.buy || [];
+        const ads = canadianProviders.ads || []; // Include ad-supported for services like Tubi
+
+        // Combine all available providers
+        const allAvailableProviders = [...flatrate, ...rent, ...buy, ...ads];
+
+        if (allAvailableProviders.length > 0) {
+          // Filter against major streaming services
+          const majorProviders = allAvailableProviders.filter((provider: any) =>
+            this.majorStreamerKeywords.some(keyword =>
+              provider.provider_name.toLowerCase().includes(keyword)
+            )
+          );
+          
+          if (majorProviders.length > 0) {
+            isStreamable = true;
+            streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
+          }
+        }
         
         console.log(`Movie ${movieId} streaming details:`, {
-          flatrateProviders: canadianProviders.flatrate.map((p: any) => p.provider_name),
+          flatrateProviders: flatrate.map((p: any) => p.provider_name),
+          rentProviders: rent.map((p: any) => p.provider_name),
+          buyProviders: buy.map((p: any) => p.provider_name),
+          adsProviders: ads.map((p: any) => p.provider_name),
+          majorProviders: streamingProviders,
           isStreamable,
-          streamingProviders,
           runtime: details.runtime
         });
       }
@@ -351,10 +373,29 @@ class TMDBAPI {
         const providersResponse = await this.makeRequest(providersUrl);
         const canadianProviders = providersResponse.results?.CA;
 
-        // Simplified, robust check: If a "flatrate" (subscription) array exists and is not empty, it's streamable.
-        if (canadianProviders && canadianProviders.flatrate && canadianProviders.flatrate.length > 0) {
-          isStreamable = true;
-          streamingProviders = [...new Set(canadianProviders.flatrate.map((p: any) => p.provider_name))];
+        if (canadianProviders) {
+          // Check all categories: subscription, rental, purchase, and ad-supported
+          const flatrate = canadianProviders.flatrate || [];
+          const rent = canadianProviders.rent || [];
+          const buy = canadianProviders.buy || [];
+          const ads = canadianProviders.ads || [];
+
+          // Combine all available providers
+          const allAvailableProviders = [...flatrate, ...rent, ...buy, ...ads];
+
+          if (allAvailableProviders.length > 0) {
+            // Filter against major streaming services only
+            const majorProviders = allAvailableProviders.filter((provider: any) =>
+              this.majorStreamerKeywords.some(keyword =>
+                provider.provider_name.toLowerCase().includes(keyword)
+              )
+            );
+            
+            if (majorProviders.length > 0) {
+              isStreamable = true;
+              streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
+            }
+          }
         }
       } catch (error) {
         console.warn(`Failed to get providers for movie ${movie.id}:`, error);
