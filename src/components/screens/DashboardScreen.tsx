@@ -31,7 +31,6 @@ export const DashboardScreen: React.FC = () => {
       const permission = Notification.permission;
       setNotificationPermission(permission);
       
-      // Show message if notifications are denied
       if (permission === 'denied') {
         setShowNotificationMessage(true);
       }
@@ -44,93 +43,106 @@ export const DashboardScreen: React.FC = () => {
       const today = dailyCycle.id;
       const alarmFlag = `alarms_set_for_${today}`;
       
-      // Check if alarms were already set today
       const alarmsAlreadySet = localStorage.getItem(alarmFlag);
       
       if (!alarmsAlreadySet) {
-        setUpAutomaticReminders(today, alarmFlag);
+        setUpAutomaticReminders();
       } else {
         setRemindersSet(true);
       }
     }
   }, [dailyCycle?.winning_movie, remindersSet]);
 
-  const setUpAutomaticReminders = async (today: string, alarmFlag: string) => {
+  // Service Worker notification function
+  const postNotificationRequest = async (time: Date, title: string, message: string): Promise<boolean> => {
+    if (Notification.permission !== 'granted') {
+      toast.error('Notifications must be enabled to set reminders.');
+      return false;
+    }
+    
+    if (time.getTime() <= Date.now()) {
+      toast.error('Cannot set reminder for a past time.');
+      return false;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      
+      if (registration.active) {
+        registration.active.postMessage({
+          type: 'schedule-notification',
+          payload: {
+            title: title,
+            body: message,
+            timestamp: time.getTime(),
+          },
+        });
+        return true;
+      } else {
+        throw new Error('Service Worker not active');
+      }
+    } catch (error) {
+      console.error('Error posting notification request to Service Worker:', error);
+      toast.error('Failed to schedule reminder.');
+      return false;
+    }
+  };
+
+  const setUpAutomaticReminders = async () => {
     const schedule = calculateSchedule();
     if (!schedule) return;
 
     try {
       // Request notification permission if not already granted
-      if ('Notification' in window && Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        permission = await Notification.requestPermission();
         setNotificationPermission(permission);
-        
-        if (permission === 'denied') {
-          setShowNotificationMessage(true);
-        }
-        
-        if (permission === 'denied') {
-          // Don't show toast here, the UI message will handle it
-          return;
-        }
       }
 
-      if (Notification.permission === 'granted') {
-        // Schedule all three reminders automatically
-        const reminders = [
-          {
-            time: addMinutes(schedule.startTime, -30),
-            title: 'Movie Night - 30 Minute Warning',
-            message: `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
-          },
-          {
-            time: addMinutes(schedule.startTime, -5),
-            title: 'Movie Night - 5 Minute Warning',
-            message: `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
-          },
-          {
-            time: schedule.startTime,
-            title: 'Movie Night - Show Time!',
-            message: `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
-          }
-        ];
+      if (permission !== 'granted') {
+        setShowNotificationMessage(true);
+        toast.error('Notifications must be enabled for automatic reminders.');
+        return;
+      }
 
-        let successCount = 0;
-        
-        reminders.forEach((reminder) => {
-          const timeUntilReminder = reminder.time.getTime() - Date.now();
-          
-          if (timeUntilReminder > 0) {
-            setTimeout(() => {
-              if (Notification.permission === 'granted') {
-                new Notification(reminder.title, {
-                  body: reminder.message,
-                  icon: '/movie-icon.svg',
-                  badge: '/movie-icon.svg',
-                  tag: `movie-reminder-${today}`,
-                  requireInteraction: true
-                });
-              }
-            }, timeUntilReminder);
-            
-            successCount++;
-          }
-        });
+      // Wait for service worker to be ready
+      await navigator.serviceWorker.ready;
 
-        if (successCount > 0) {
-          // Mark alarms as set for today
-          localStorage.setItem(alarmFlag, 'true');
-          setRemindersSet(true);
-          
-          toast.success(`🔔 ${successCount} automatic reminders set for movie night!`, {
-            duration: 4000,
-            icon: '📱'
-          });
-        } else {
-          toast.error('All reminder times have already passed for today.');
+      const reminders = [
+        {
+          time: addMinutes(schedule.startTime, -30),
+          title: 'Movie Night - 30 Minute Warning',
+          message: `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
+        },
+        {
+          time: addMinutes(schedule.startTime, -5),
+          title: 'Movie Night - 5 Minute Warning',
+          message: `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
+        },
+        {
+          time: schedule.startTime,
+          title: 'Movie Night - Show Time!',
+          message: `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
         }
+      ];
+
+      const results = await Promise.all(
+        reminders.map(reminder => postNotificationRequest(reminder.time, reminder.title, reminder.message))
+      );
+
+      const successCount = results.filter(Boolean).length;
+
+      if (successCount > 0) {
+        localStorage.setItem(`alarms_set_for_${dailyCycle!.id}`, 'true');
+        setRemindersSet(true);
+        
+        toast.success(`🔔 ${successCount} automatic reminders scheduled!`, {
+          duration: 4000,
+          icon: '📱'
+        });
       } else {
-        toast.error('Notification permission is required for automatic reminders.');
+        toast.error('Failed to schedule automatic reminders.');
       }
     } catch (error) {
       console.error('Error setting up automatic reminders:', error);
@@ -138,25 +150,10 @@ export const DashboardScreen: React.FC = () => {
     }
   };
 
-  const scheduleManualAlarm = (time: Date, title: string, message: string) => {
-    // For manual alarms, use notifications only
-    if ('Notification' in window && Notification.permission === 'granted') {
-      const timeUntilAlarm = time.getTime() - Date.now();
-      if (timeUntilAlarm > 0) {
-        setTimeout(() => {
-          new Notification(title, {
-            body: message,
-            icon: '/movie-icon.svg',
-            badge: '/movie-icon.svg',
-            requireInteraction: true
-          });
-        }, timeUntilAlarm);
-        toast.success(`📱 Notification set for ${format(time, 'h:mm a')}`);
-      } else {
-        toast.error('Cannot set reminder for past time');
-      }
-    } else {
-      toast.error('Notifications must be enabled to set manual reminders');
+  const scheduleManualAlarm = async (time: Date, title: string, message: string) => {
+    const success = await postNotificationRequest(time, title, message);
+    if (success) {
+      toast.success(`📱 Reminder set for ${format(time, 'h:mm a')}`);
     }
   };
 
@@ -260,10 +257,10 @@ export const DashboardScreen: React.FC = () => {
             >
               <div className="flex items-center justify-center space-x-2 text-green-300">
                 <CheckCircle className="h-5 w-5" />
-                <span className="font-semibold">📱 Automatic reminders are set!</span>
+                <span className="font-semibold">📱 Automatic reminders are scheduled!</span>
               </div>
               <p className="text-green-300/80 text-sm mt-1">
-                You'll receive phone notifications 30 minutes before, 5 minutes before, and at showtime
+                You'll receive reliable notifications 30 minutes before, 5 minutes before, and at showtime
               </p>
             </motion.div>
           )}
@@ -280,7 +277,7 @@ export const DashboardScreen: React.FC = () => {
                 <span className="font-semibold">Automatic reminders are disabled</span>
               </div>
               <p className="text-yellow-300/80 text-sm text-center">
-                To enable them, please go to your phone's Settings → Apps → MovieNight → Notifications and allow notifications.
+                To enable them, please go to your browser settings and allow notifications for this site.
               </p>
               <button
                 onClick={() => setShowNotificationMessage(false)}
@@ -436,16 +433,16 @@ export const DashboardScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Manual Reminders (Backup Option) */}
+              {/* Manual Reminders */}
               <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
                 <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
                   <Bell className="h-5 w-5 mr-2" />
-                  {notificationPermission === 'granted' ? 'Additional Reminders' : 'Manual Reminders'}
+                  Manual Reminders
                 </h3>
                 
                 {notificationPermission === 'denied' && !showNotificationMessage && (
                   <div className="bg-red-500/20 text-red-300 px-3 py-2 rounded-lg text-sm mb-4">
-                    <strong>Note:</strong> Notifications are disabled. Enable them in your phone settings to use reminders.
+                    <strong>Note:</strong> Notifications are disabled. Enable them in your browser settings to use reminders.
                   </div>
                 )}
                 
@@ -457,7 +454,7 @@ export const DashboardScreen: React.FC = () => {
                       `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
                     )}
                     disabled={notificationPermission !== 'granted'}
-                    className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
+                    className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>30-minute warning</span>
                     <span className="text-white/70">{format(addMinutes(schedule.startTime, -30), 'h:mm a')}</span>
@@ -470,7 +467,7 @@ export const DashboardScreen: React.FC = () => {
                       `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
                     )}
                     disabled={notificationPermission !== 'granted'}
-                    className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white"
+                    className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>5-minute warning</span>
                     <span className="text-white/70">{format(addMinutes(schedule.startTime, -5), 'h:mm a')}</span>
@@ -483,7 +480,7 @@ export const DashboardScreen: React.FC = () => {
                       `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
                     )}
                     disabled={notificationPermission !== 'granted'}
-                    className="w-full flex justify-between items-center bg-purple-500/30 hover:bg-purple-500/40 p-3 rounded-lg transition-colors text-white font-semibold"
+                    className="w-full flex justify-between items-center bg-purple-500/30 hover:bg-purple-500/40 p-3 rounded-lg transition-colors text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>Show time!</span>
                     <span className="text-white/90">{format(schedule.startTime, 'h:mm a')}</span>
@@ -493,7 +490,7 @@ export const DashboardScreen: React.FC = () => {
                 <p className="text-white/60 text-xs mt-3 text-center">
                   {notificationPermission === 'granted' 
                     ? 'Click any reminder to set an additional notification' 
-                    : 'Enable notifications in your phone settings to use reminders'
+                    : 'Enable notifications in your browser settings to use reminders'
                   }
                 </p>
               </div>
