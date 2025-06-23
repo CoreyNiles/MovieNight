@@ -16,6 +16,7 @@ interface TMDBMovie {
   isStreamable?: boolean;
   streaming_providers?: string[];
   vote_average?: number;
+  vote_count?: number;
   release_date?: string;
 }
 
@@ -204,12 +205,15 @@ class TMDBAPI {
         })
       );
 
-      // REMOVED: Don't filter out non-streamable movies - let the UI handle it
-      // const streamableMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
+      // Filter out low-quality movies (those with very few ratings)
+      const highQualityMovies = moviesWithDetails.filter(movie => {
+        const voteCount = movie.vote_count || 0;
+        return voteCount > 10; // Keep movies with more than 10 ratings
+      });
 
-      // Smart sorting for search relevance - now applied to ALL movies
+      // Smart sorting for search relevance - now applied to ALL high-quality movies
       const queryLower = query.toLowerCase();
-      const sortedMovies = moviesWithDetails.sort((a, b) => {
+      const sortedMovies = highQualityMovies.sort((a, b) => {
         const titleA = a.title.toLowerCase();
         const titleB = b.title.toLowerCase();
         
@@ -244,10 +248,10 @@ class TMDBAPI {
         return scoreB - scoreA;
       });
 
-      console.log(`Returning ${sortedMovies.length} movies with smart relevance sorting (streamable and non-streamable)`);
+      console.log(`Returning ${sortedMovies.length} high-quality movies with smart relevance sorting`);
 
       return {
-        items: sortedMovies, // Now contains ALL movies, sorted by relevance
+        items: sortedMovies, // Now contains high-quality movies, sorted by relevance
         total_pages: response.total_pages || 1,
         page: page
       };
@@ -279,19 +283,12 @@ class TMDBAPI {
         // ONLY get subscription (flatrate) providers - no rentals or purchases
         const flatrateProviders = canadianProviders.flatrate || [];
         
-        // Simple filter logic for major providers
-        const majorProviders = flatrateProviders.filter((provider: any) =>
-          this.majorStreamerKeywords.some(keyword =>
-            provider.provider_name.toLowerCase().includes(keyword)
-          )
-        );
-        
-        streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
-        isStreamable = streamingProviders.length > 0;
+        // Trust all subscription providers instead of filtering by keywords
+        streamingProviders = [...new Set(flatrateProviders.map((provider: any) => provider.provider_name))];
+        isStreamable = flatrateProviders.length > 0;
         
         console.log(`Movie ${movieId} streaming details:`, {
           flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
-          majorProviders: majorProviders.map((p: any) => p.provider_name),
           isStreamable,
           streamingProviders,
           runtime: details.runtime
@@ -362,19 +359,12 @@ class TMDBAPI {
           // ONLY get subscription (flatrate) providers - no rentals or purchases
           const flatrateProviders = canadianProviders.flatrate || [];
           
-          // Simple and reliable filter logic for major providers
-          const majorProviders = flatrateProviders.filter((provider: any) =>
-            this.majorStreamerKeywords.some(keyword =>
-              provider.provider_name.toLowerCase().includes(keyword)
-            )
-          );
-          
-          streamingProviders = [...new Set(majorProviders.map((provider: any) => provider.provider_name))];
-          isStreamable = streamingProviders.length > 0;
+          // Trust all subscription providers instead of filtering by keywords
+          streamingProviders = [...new Set(flatrateProviders.map((provider: any) => provider.provider_name))];
+          isStreamable = flatrateProviders.length > 0;
           
           console.log(`Movie: ${movie.title}`, {
             flatrateProviders: flatrateProviders.map((p: any) => p.provider_name),
-            majorProviders: majorProviders.map((p: any) => p.provider_name),
             finalStreamingProviders: streamingProviders,
             isStreamable
           });
@@ -396,6 +386,7 @@ class TMDBAPI {
         isStreamable: isStreamable,
         streaming_providers: streamingProviders,
         vote_average: movie.vote_average,
+        vote_count: movie.vote_count,
         release_date: movie.release_date
       };
     } catch (error) {
@@ -412,6 +403,7 @@ class TMDBAPI {
         isStreamable: false, // Default to false if we can't verify
         streaming_providers: [],
         vote_average: movie.vote_average,
+        vote_count: movie.vote_count,
         release_date: movie.release_date
       };
     }
