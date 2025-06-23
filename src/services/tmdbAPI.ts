@@ -204,12 +204,12 @@ class TMDBAPI {
         })
       );
 
-      // Filter for movies that are actually streamable on major platforms
-      const streamableMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
+      // REMOVED: Don't filter out non-streamable movies - let the UI handle it
+      // const streamableMovies = moviesWithDetails.filter(movie => movie?.isStreamable === true);
 
-      // Smart sorting for search relevance
+      // Smart sorting for search relevance - now applied to ALL movies
       const queryLower = query.toLowerCase();
-      const sortedMovies = streamableMovies.sort((a, b) => {
+      const sortedMovies = moviesWithDetails.sort((a, b) => {
         const titleA = a.title.toLowerCase();
         const titleB = b.title.toLowerCase();
         
@@ -234,16 +234,20 @@ class TMDBAPI {
         if (containsA && !containsB) return -1;
         if (!containsA && containsB) return 1;
         
+        // Fourth Priority: Streamable movies come before non-streamable
+        if (a.isStreamable && !b.isStreamable) return -1;
+        if (!a.isStreamable && b.isStreamable) return 1;
+        
         // Final Sorting: By vote average and popularity
         const scoreA = (a.vote_average || 0) * 10 + (a.release_year || 0) / 1000;
         const scoreB = (b.vote_average || 0) * 10 + (b.release_year || 0) / 1000;
         return scoreB - scoreA;
       });
 
-      console.log(`Returning ${sortedMovies.length} streamable movies with smart relevance sorting`);
+      console.log(`Returning ${sortedMovies.length} movies with smart relevance sorting (streamable and non-streamable)`);
 
       return {
-        items: sortedMovies,
+        items: sortedMovies, // Now contains ALL movies, sorted by relevance
         total_pages: response.total_pages || 1,
         page: page
       };
