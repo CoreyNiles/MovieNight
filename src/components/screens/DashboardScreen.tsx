@@ -10,6 +10,23 @@ import { format, addMinutes } from 'date-fns';
 import { CONSTANTS } from '../../constants';
 import toast from 'react-hot-toast';
 
+// Median.co JavaScript Bridge API declaration
+declare global {
+  interface Window {
+    median?: {
+      notifications?: {
+        requestPermission(): Promise<{ granted: boolean }>;
+        schedule(options: {
+          title: string;
+          body: string;
+          date: Date;
+          id?: string;
+        }): Promise<void>;
+      };
+    };
+  }
+}
+
 export const DashboardScreen: React.FC = () => {
   const { user } = useAuth();
   const { sharedMovies } = useSharedMovies();
@@ -17,29 +34,27 @@ export const DashboardScreen: React.FC = () => {
   const { config } = useAppConfig();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [remindersSet, setRemindersSet] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-  const [showNotificationMessage, setShowNotificationMessage] = useState(false);
+  const [notificationSupported, setNotificationSupported] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Check notification permission on mount
+  // Check if Median.co notifications are available
   useEffect(() => {
-    if ('Notification' in window) {
-      const permission = Notification.permission;
-      setNotificationPermission(permission);
-      
-      if (permission === 'denied') {
-        setShowNotificationMessage(true);
-      }
+    const isMedianAvailable = typeof window.median !== 'undefined' && 
+                             typeof window.median.notifications !== 'undefined';
+    setNotificationSupported(isMedianAvailable);
+    
+    if (!isMedianAvailable) {
+      console.log('Median.co JavaScript bridge not available - running in web browser mode');
     }
   }, []);
 
   // Automatically set reminders when dashboard loads
   useEffect(() => {
-    if (dailyCycle?.winning_movie && !remindersSet) {
+    if (dailyCycle?.winning_movie && !remindersSet && notificationSupported) {
       const today = dailyCycle.id;
       const alarmFlag = `alarms_set_for_${today}`;
       
@@ -51,109 +66,104 @@ export const DashboardScreen: React.FC = () => {
         setRemindersSet(true);
       }
     }
-  }, [dailyCycle?.winning_movie, remindersSet]);
-
-  // Service Worker notification function
-  const postNotificationRequest = async (time: Date, title: string, message: string): Promise<boolean> => {
-    if (Notification.permission !== 'granted') {
-      toast.error('Notifications must be enabled to set reminders.');
-      return false;
-    }
-    
-    if (time.getTime() <= Date.now()) {
-      toast.error('Cannot set reminder for a past time.');
-      return false;
-    }
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      
-      if (registration.active) {
-        registration.active.postMessage({
-          type: 'schedule-notification',
-          payload: {
-            title: title,
-            body: message,
-            timestamp: time.getTime(),
-          },
-        });
-        return true;
-      } else {
-        throw new Error('Service Worker not active');
-      }
-    } catch (error) {
-      console.error('Error posting notification request to Service Worker:', error);
-      toast.error('Failed to schedule reminder.');
-      return false;
-    }
-  };
+  }, [dailyCycle?.winning_movie, remindersSet, notificationSupported]);
 
   const setUpAutomaticReminders = async () => {
     const schedule = calculateSchedule();
     if (!schedule) return;
 
     try {
-      // Request notification permission if not already granted
-      let permission = Notification.permission;
-      if (permission === 'default') {
-        permission = await Notification.requestPermission();
-        setNotificationPermission(permission);
-      }
-
-      if (permission !== 'granted') {
-        setShowNotificationMessage(true);
-        toast.error('Notifications must be enabled for automatic reminders.');
+      // Check if the Median JavaScript bridge is available
+      if (!window.median?.notifications) {
+        toast.error("Notification service is not available in web browser mode.");
         return;
       }
 
-      // Wait for service worker to be ready
-      await navigator.serviceWorker.ready;
+      // Request permission using Median's function
+      const permissionResult = await window.median.notifications.requestPermission();
 
-      const reminders = [
-        {
-          time: addMinutes(schedule.startTime, -30),
-          title: 'Movie Night - 30 Minute Warning',
-          message: `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
-        },
-        {
-          time: addMinutes(schedule.startTime, -5),
-          title: 'Movie Night - 5 Minute Warning',
-          message: `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
-        },
-        {
-          time: schedule.startTime,
-          title: 'Movie Night - Show Time!',
-          message: `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
-        }
-      ];
+      if (permissionResult.granted) {
+        const reminders = [
+          { 
+            time: addMinutes(schedule.startTime, -30), 
+            title: 'Movie Night - 30 Minute Warning', 
+            message: `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`,
+            id: 'reminder-30min'
+          },
+          { 
+            time: addMinutes(schedule.startTime, -5), 
+            title: 'Movie Night - 5 Minute Warning', 
+            message: `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`,
+            id: 'reminder-5min'
+          },
+          { 
+            time: schedule.startTime, 
+            title: 'Movie Night - Show Time!', 
+            message: `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`,
+            id: 'reminder-showtime'
+          }
+        ];
 
-      const results = await Promise.all(
-        reminders.map(reminder => postNotificationRequest(reminder.time, reminder.title, reminder.message))
-      );
-
-      const successCount = results.filter(Boolean).length;
-
-      if (successCount > 0) {
-        localStorage.setItem(`alarms_set_for_${dailyCycle!.id}`, 'true');
-        setRemindersSet(true);
+        let successCount = 0;
         
-        toast.success(`🔔 ${successCount} automatic reminders scheduled!`, {
-          duration: 4000,
-          icon: '📱'
-        });
+        for (const reminder of reminders) {
+          if (reminder.time.getTime() > Date.now()) {
+            try {
+              // Schedule each notification using Median's function
+              await window.median.notifications.schedule({
+                title: reminder.title,
+                body: reminder.message,
+                date: reminder.time,
+                id: reminder.id
+              });
+              successCount++;
+            } catch (error) {
+              console.error(`Failed to schedule reminder ${reminder.id}:`, error);
+            }
+          }
+        }
+
+        if (successCount > 0) {
+          localStorage.setItem(`alarms_set_for_${dailyCycle!.id}`, 'true');
+          setRemindersSet(true);
+          toast.success(`🔔 ${successCount} reminders successfully scheduled!`, {
+            duration: 4000,
+            icon: '📱'
+          });
+        } else {
+          toast.error('All reminder times have already passed for today.');
+        }
       } else {
-        toast.error('Failed to schedule automatic reminders.');
+        toast.error('Notification permission was not granted.');
       }
     } catch (error) {
-      console.error('Error setting up automatic reminders:', error);
-      toast.error('Failed to set up automatic reminders.');
+      console.error("Error with Median's notification service:", error);
+      toast.error('Failed to set up reminders.');
     }
   };
 
   const scheduleManualAlarm = async (time: Date, title: string, message: string) => {
-    const success = await postNotificationRequest(time, title, message);
-    if (success) {
+    if (!window.median?.notifications) {
+      toast.error("Notification service is not available in web browser mode.");
+      return;
+    }
+
+    if (time.getTime() <= Date.now()) {
+      toast.error('Cannot set reminder for a past time.');
+      return;
+    }
+
+    try {
+      await window.median.notifications.schedule({
+        title: title,
+        body: message,
+        date: time,
+        id: `manual-${Date.now()}`
+      });
       toast.success(`📱 Reminder set for ${format(time, 'h:mm a')}`);
+    } catch (error) {
+      console.error('Error scheduling manual reminder:', error);
+      toast.error('Failed to schedule reminder.');
     }
   };
 
@@ -249,7 +259,7 @@ export const DashboardScreen: React.FC = () => {
           </motion.div>
 
           {/* Automatic Reminders Status */}
-          {remindersSet && (
+          {remindersSet && notificationSupported && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -260,31 +270,26 @@ export const DashboardScreen: React.FC = () => {
                 <span className="font-semibold">📱 Automatic reminders are scheduled!</span>
               </div>
               <p className="text-green-300/80 text-sm mt-1">
-                You'll receive reliable notifications 30 minutes before, 5 minutes before, and at showtime
+                You'll receive mobile notifications 30 minutes before, 5 minutes before, and at showtime
               </p>
             </motion.div>
           )}
 
-          {/* Notification Permission Denied Message */}
-          {showNotificationMessage && notificationPermission === 'denied' && (
+          {/* Notification Not Supported Message */}
+          {!notificationSupported && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-yellow-500/20 border border-yellow-500/30 rounded-xl p-4 mb-6"
+              className="bg-blue-500/20 border border-blue-500/30 rounded-xl p-4 mb-6"
             >
-              <div className="flex items-center justify-center space-x-2 text-yellow-300 mb-2">
+              <div className="flex items-center justify-center space-x-2 text-blue-300 mb-2">
                 <Bell className="h-5 w-5" />
-                <span className="font-semibold">Automatic reminders are disabled</span>
+                <span className="font-semibold">Running in Web Browser Mode</span>
               </div>
-              <p className="text-yellow-300/80 text-sm text-center">
-                To enable them, please go to your browser settings and allow notifications for this site.
+              <p className="text-blue-300/80 text-sm text-center">
+                Automatic mobile notifications are available when using the MovieNight mobile app. 
+                In web browser mode, you can manually set reminders using your device's clock app.
               </p>
-              <button
-                onClick={() => setShowNotificationMessage(false)}
-                className="mt-3 mx-auto block text-yellow-300/60 hover:text-yellow-300 text-xs underline"
-              >
-                Dismiss
-              </button>
             </motion.div>
           )}
 
@@ -437,12 +442,13 @@ export const DashboardScreen: React.FC = () => {
               <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
                 <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
                   <Bell className="h-5 w-5 mr-2" />
-                  Manual Reminders
+                  {notificationSupported ? 'Additional Reminders' : 'Manual Reminders'}
                 </h3>
                 
-                {notificationPermission === 'denied' && !showNotificationMessage && (
-                  <div className="bg-red-500/20 text-red-300 px-3 py-2 rounded-lg text-sm mb-4">
-                    <strong>Note:</strong> Notifications are disabled. Enable them in your browser settings to use reminders.
+                {!notificationSupported && (
+                  <div className="bg-blue-500/20 text-blue-300 px-3 py-2 rounded-lg text-sm mb-4">
+                    <strong>Note:</strong> Mobile notifications are available in the MovieNight app. 
+                    In web browser mode, use your device's clock app to set reminders.
                   </div>
                 )}
                 
@@ -453,7 +459,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - 30 Minute Warning',
                       `${schedule.movie.title} starts in 30 minutes! Get your snacks ready! 🍿`
                     )}
-                    disabled={notificationPermission !== 'granted'}
+                    disabled={!notificationSupported}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>30-minute warning</span>
@@ -466,7 +472,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - 5 Minute Warning',
                       `${schedule.movie.title} is about to start! Time to gather everyone! 🎬`
                     )}
-                    disabled={notificationPermission !== 'granted'}
+                    disabled={!notificationSupported}
                     className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-3 rounded-lg transition-colors text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>5-minute warning</span>
@@ -479,7 +485,7 @@ export const DashboardScreen: React.FC = () => {
                       'Movie Night - Show Time!',
                       `It's time for ${schedule.movie.title}! Lights, camera, action! 🎭`
                     )}
-                    disabled={notificationPermission !== 'granted'}
+                    disabled={!notificationSupported}
                     className="w-full flex justify-between items-center bg-purple-500/30 hover:bg-purple-500/40 p-3 rounded-lg transition-colors text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span>Show time!</span>
@@ -488,9 +494,9 @@ export const DashboardScreen: React.FC = () => {
                 </div>
                 
                 <p className="text-white/60 text-xs mt-3 text-center">
-                  {notificationPermission === 'granted' 
-                    ? 'Click any reminder to set an additional notification' 
-                    : 'Enable notifications in your browser settings to use reminders'
+                  {notificationSupported 
+                    ? 'Click any reminder to set an additional mobile notification' 
+                    : 'Mobile notifications available in the MovieNight app'
                   }
                 </p>
               </div>
